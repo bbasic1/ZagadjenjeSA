@@ -1,0 +1,29 @@
+name: Prikupljanje podataka
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"   # svaka 3 sata, u 17. minuti (UTC)
+  workflow_dispatch:          # dugme "Run workflow" za ručno pokretanje
+
+permissions:
+  contents: write             # da bot smije commitovati podatke
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15"
+      - run: pip install -r requirements.txt
+      - run: python collect.py
+      - name: Sačuvaj podatke u repo
+        if: always()          # čuvaj i djelimične podatke kad nešto zakaže
+        run: |
+          git config user.name "air-bot"
+          git config user.email "air-bot@users.noreply.github.com"
+          git add data/
+          git commit -m "podaci $(date -u +'%Y-%m-%d %H:%M')" || exit 0
+          git pull --rebase
+          git push
