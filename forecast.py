@@ -80,7 +80,7 @@ def predict(cams: pd.DataFrame, met: pd.DataFrame, today: pd.Timestamp) -> pd.Da
             out = df[["station", "issue_day", "target_day"]].copy()
             for q in QUANTILES:
                 model = lgb.Booster(model_file=str(MODELS / f"{pol}_h{h}_q{int(q * 100)}.txt"))
-                out[f"q{int(q * 100)}"] = np.expm1(model.predict(df[model.feature_name()]))
+                out[f"q{int(q * 100)}"] = np.expm1(model.predict(df.reindex(columns=model.feature_name())))
             qs = [f"q{int(q * 100)}" for q in QUANTILES]
             out[qs] = np.sort(out[qs].values, axis=1)
             rows.append(out.assign(pollutant=pol, horizon=h))
