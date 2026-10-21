@@ -33,6 +33,7 @@ jobs:
         run: |
           git config user.name "air-bot"
           git config user.email "air-bot@users.noreply.github.com"
+          [ -d data/predictions ] || exit 0   # nije bilo slanja (proba ili preskočen termin)
           git add data/predictions/
           git commit -m "prognoza $(date -u +'%Y-%m-%d')" || exit 0
           git pull --rebase
