@@ -13,7 +13,7 @@ Pokreće se ručno ili iz GitHub Actions (.github/workflows/cams_archive.yml).
 
 import sys
 import time
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import requests
@@ -25,26 +25,32 @@ FIRST_YEAR = 2013  # najranije što cams_europe na Open-Meteo može imati
 OUT = DATA / "cams" / "archive.csv.gz"
 
 
-def fetch_year(year: int) -> pd.DataFrame:
-    """Jedan zahtjev za sve stanice i jednu godinu; prazno ako godina nije dostupna."""
-    end = min(date(year, 12, 31), date.today())
+def fetch_period(start: date, end: date) -> pd.DataFrame:
+    """Jedan zahtjev za sve stanice i jedan period; prazno ako period nije dostupan."""
     params = {
         "latitude": ",".join(str(s[1]) for s in STATIONS.values()),
         "longitude": ",".join(str(s[2]) for s in STATIONS.values()),
         "hourly": "pm10,pm2_5",
         "domains": "cams_europe",
-        "start_date": f"{year}-01-01",
+        "start_date": start.isoformat(),
         "end_date": end.isoformat(),
         "timezone": "GMT",
     }
-    for attempt in range(4):
-        r = requests.get(URL, params=params, headers=HEADERS, timeout=120)
+    for attempt in range(5):
+        try:
+            r = requests.get(URL, params=params, headers=HEADERS, timeout=180)
+        except requests.Timeout:  # Open-Meteo zna zastati na velikim zahtjevima
+            print(f"  {start}: timeout, pokušaj {attempt + 1}")
+            time.sleep(20 * (attempt + 1))
+            continue
         if r.status_code == 429:  # ograničenje zahtjeva, sačekaj pa ponovi
             time.sleep(30 * (attempt + 1))
             continue
         break
+    else:
+        raise RuntimeError("svi pokušaji neuspješni")
     if r.status_code == 400:  # godina van raspona arhive
-        print(f"  {year}: nije dostupno ({r.json().get('reason', r.text)[:80]})")
+        print(f"  {start}: nije dostupno ({r.json().get('reason', r.text)[:80]})")
         return pd.DataFrame()
     r.raise_for_status()
     data = r.json()
@@ -58,21 +64,29 @@ def fetch_year(year: int) -> pd.DataFrame:
     out = pd.concat(frames, ignore_index=True)
     out = out.rename(columns={"time": "time_utc", "pm10": "cams_pm10", "pm2_5": "cams_pm2_5"})
     out = out.dropna(subset=["cams_pm10", "cams_pm2_5"], how="all")
-    print(f"  {year}: {len(out)} redova")
+    print(f"  {start} do {end}: {len(out)} redova")
     return out
 
 
 def main() -> int:
-    frames = []
-    for year in range(FIRST_YEAR, date.today().year + 1):
-        try:
-            frames.append(fetch_year(year))
-        except Exception as e:
-            print(f"  ! {year}: {e}")
-        time.sleep(2)
+    # pola godine po zahtjevu: cijela godina za 9 stanica zna isteći (timeout)
+    yesterday = date.today() - timedelta(days=1)  # samo završeni dani, bez prognoze
+    frames, failed = [], []
+    for year in range(FIRST_YEAR, yesterday.year + 1):
+        for start, end in [(date(year, 1, 1), date(year, 6, 30)),
+                           (date(year, 7, 1), date(year, 12, 31))]:
+            if start > yesterday:
+                continue
+            try:
+                frames.append(fetch_period(start, min(end, yesterday)))
+            except Exception as e:
+                print(f"  ! {start}: {e}")
+                failed.append(start)
+            time.sleep(2)
     df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    if df.empty:
-        print("GREŠKA: arhiva prazna")
+    if df.empty or failed:
+        # ne prepisuj dobru arhivu djelimičnom
+        print(f"GREŠKA: arhiva nepotpuna, neuspjeli periodi: {failed}")
         return 1
     df["time_utc"] = pd.to_datetime(df.time_utc).dt.strftime("%Y-%m-%d %H:00")
     df = df.drop_duplicates(["station", "time_utc"]).sort_values(["station", "time_utc"])
