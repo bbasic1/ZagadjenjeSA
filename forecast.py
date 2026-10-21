@@ -42,7 +42,9 @@ POLLUTANTS = [("pm10", "cams_pm10", "PM10"), ("pm2_5", "cams_pm2_5", "PM2_5")]
 # EEA skala za dnevni PM10 (µg/m³); uskladiti sa skalom Zavoda kad je potvrdimo
 CATEGORIES = [(20, "🟢", "dobar"), (40, "🟡", "prihvatljiv"), (50, "🟠", "umjeren"),
               (100, "🔴", "loš"), (150, "🟣", "vrlo loš"), (np.inf, "⚫", "izuzetno loš")]
-DAYS = ["pon", "uto", "sri", "čet", "pet", "sub", "ned"]
+DAYS = ["ponedjeljak", "utorak", "srijeda", "četvrtak", "petak", "subota", "nedjelja"]
+DAYS_ACC = ["ponedjeljak", "utorak", "srijedu", "četvrtak", "petak", "subotu", "nedjelju"]
+TREND_UG = 5  # promjena medijana stanica (µg/m³) koju vrijedi spomenuti u uvodu
 
 
 def fetch(url: str, variables: list[str], past_days: int, forecast_days: int,
@@ -133,19 +135,35 @@ def category(x: float) -> tuple[str, str]:
     return next((e, n) for limit, e, n in CATEGORIES if x <= limit)
 
 
+def intro(pm: pd.DataFrame) -> list[str]:
+    """Pozdrav, dani i kratak trend; sve izvedeno iz same prognoze."""
+    d1, d2 = (pm[pm.horizon == h].target_day.iloc[0] for h in HORIZONS)
+    lines = ["🌆 <b>Dobro veče, Sarajevo!</b>",
+             f"Evo kakav nas zrak čeka sutra, u {DAYS_ACC[d1.dayofweek]} {d1:%d.%m.}, "
+             f"i prekosutra, u {DAYS_ACC[d2.dayofweek]} {d2:%d.%m.} 👇"]
+    m1, m2 = (pm[pm.horizon == h].q50.median() for h in HORIZONS)
+    if m2 - m1 >= TREND_UG:
+        lines.append(f"Pažnja: u {DAYS_ACC[d2.dayofweek]} se zagađenje penje 📈")
+    elif m1 - m2 >= TREND_UG:
+        lines.append(f"Dobre vijesti: u {DAYS_ACC[d2.dayofweek]} zrak postaje čišći 📉")
+    return lines + [""]
+
+
 def message(pred: pd.DataFrame) -> str:
     pm = pred[pred.pollutant == "pm10"]
-    lines = []
+    lines = intro(pm)
     for h in HORIZONS:
         part = pm[pm.horizon == h].sort_values("q50", ascending=False)
         day = part.target_day.iloc[0]
         label = "Sutra" if h == 1 else "Prekosutra"
-        lines.append(f"<b>{label}, {DAYS[day.dayofweek]} {day:%d.%m.}</b> (PM10, dnevni prosjek)")
+        lines.append(f"📅 <b>{label}, {DAYS[day.dayofweek]} {day:%d.%m.}</b> (PM10, dnevni prosjek)")
         for _, r in part.iterrows():
             emoji, name = category(r.q50)
             lines.append(f"{emoji} {DISPLAY[r.station]}: {name}, ~{r.q50:.0f} µg/m³ "
                          f"({r.q10:.0f}–{r.q90:.0f})")
         lines.append("")
+    lines.append("U zagradi je raspon u koji očekujemo stvarni prosjek. Lijepo veče i čujemo se sutra! 💚")
+    lines.append("")
     lines.append("<i>Eksperimentalni model korigovan na mjerenja stanica, nije zvanični izvor. "
                  "Mjerenja uživo: fhmzbih.gov.ba</i>")
     return "\n".join(lines)
