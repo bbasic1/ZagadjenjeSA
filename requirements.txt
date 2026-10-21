@@ -4,3 +4,4 @@ lxml
 pandas
 tzdata
 tabulate
+lightgbm

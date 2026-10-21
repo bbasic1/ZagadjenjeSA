@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: "3.15"
       - run: pip install -r requirements.txt
-      - run: python fetch_meteo_archive.py
+      - run: python -u fetch_meteo_archive.py
       - name: Sačuvaj arhivu u repo
         run: |
           git config user.name "air-bot"
