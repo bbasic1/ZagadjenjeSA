@@ -20,6 +20,11 @@ on:
 permissions:
   contents: write
 
+# runovi idu jedan po jedan, pa sljedeći vidi već snimljenu prognozu i ne šalje duplo
+concurrency:
+  group: forecast
+  cancel-in-progress: false
+
 jobs:
   forecast:
     runs-on: ubuntu-latest
