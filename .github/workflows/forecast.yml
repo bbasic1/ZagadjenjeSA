@@ -7,11 +7,11 @@ on:
         description: "Samo ispiši poruku, ne šalji u kanal"
         type: boolean
         default: true
-  # Uključiti kad model bude odobren. Dva termina pokrivaju ljetno i zimsko
-  # vrijeme; skripta šalje samo poslije 18:00 lokalno i samo jednom dnevno.
-  # schedule:
-  #   - cron: "20 16 * * *"
-  #   - cron: "20 17 * * *"
+  # Dva termina pokrivaju ljetno i zimsko vrijeme; skripta šalje samo
+  # poslije 18:00 lokalno i samo jednom dnevno.
+  schedule:
+    - cron: "20 16 * * *"
+    - cron: "20 17 * * *"
 
 permissions:
   contents: write
