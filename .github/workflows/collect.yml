@@ -2,7 +2,7 @@ name: Prikupljanje podataka
 
 on:
   schedule:
-    - cron: "17 */3 * * *"   # svaka 3 sata, u 17. minuti (UTC)
+    - cron: "17 * * * *"     # svaki sat u 17. minuti (UTC); GitHub često preskoči run, pa više pokušaja znači manje rupa u snimcima prognoze
   workflow_dispatch:          # dugme "Run workflow" za ručno pokretanje
 
 permissions:
