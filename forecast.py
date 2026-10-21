@@ -6,6 +6,9 @@ po lokalnom vremenu. Koristi iste features kao train_v1.py:
   * CAMS satne vrijednosti zaključno sa 17:00 danas (ništa poslije izdavanja)
   * meteo prognoza za sutra i prekosutra (najsvježiji run)
 
+Model predviđa CAMS dnevni prosjek po CAMS ćeliji; calibrate.py ga zatim
+prevodi na skalu svake FHMZ stanice (faktor iz zadnjih 14 dana mjerenja).
+
 Svaka prognoza se snima u data/predictions/YYYY-MM-DD.csv, da je kasnije
 uporedimo sa stvarnim mjerenjem (javna tačnost).
 
@@ -20,16 +23,22 @@ import numpy as np
 import pandas as pd
 import requests
 
+from baseline import load_fhmz
+from calibrate import WINDOW_DAYS, factor_for, station_factors
 from collect import DATA, HEADERS, LOCAL_TZ, STATIONS
 from fetch_meteo_archive import VARIABLES, locations
 from send_telegram import check_config, send
 from train_v1 import HORIZONS, ISSUE_HOUR, MODELS, QUANTILES, attach_upper, build_dataset
 
-# prikaz: stanice u istoj CAMS ćeliji dijele prognozu
+# CAMS ćelije za koje imamo modele; stanice u istoj ćeliji dijele sirovu prognozu
+CELLS = ["bjelave", "hadzici", "ilidza", "ilijas", "ivan_sedlo", "otoka", "vogosca"]
+CELL_OF = {"vijecnica": "bjelave", "saraj_polje": "ilidza"}
 DISPLAY = {
-    "bjelave": "Bjelave / Vijećnica", "otoka": "Otoka", "ilidza": "Ilidža / Saraj Polje",
-    "vogosca": "Vogošća", "hadzici": "Hadžići", "ilijas": "Ilijaš", "ivan_sedlo": "Ivan Sedlo",
+    "bjelave": "Bjelave", "vijecnica": "Vijećnica", "otoka": "Otoka", "ilidza": "Ilidža",
+    "saraj_polje": "Saraj Polje", "vogosca": "Vogošća", "hadzici": "Hadžići",
+    "ilijas": "Ilijaš", "ivan_sedlo": "Ivan Sedlo",
 }
+POLLUTANTS = [("pm10", "cams_pm10", "PM10"), ("pm2_5", "cams_pm2_5", "PM2_5")]
 # EEA skala za dnevni PM10 (µg/m³); uskladiti sa skalom Zavoda kad je potvrdimo
 CATEGORIES = [(20, "🟢", "dobar"), (40, "🟡", "prihvatljiv"), (50, "🟠", "umjeren"),
               (100, "🔴", "loš"), (150, "🟣", "vrlo loš"), (np.inf, "⚫", "izuzetno loš")]
@@ -58,7 +67,7 @@ def fetch(url: str, variables: list[str], past_days: int, forecast_days: int,
 
 def live_inputs(now: datetime) -> tuple[pd.DataFrame, pd.DataFrame]:
     cams = fetch("https://air-quality-api.open-meteo.com/v1/air-quality",
-                 ["pm10", "pm2_5"], past_days=5, forecast_days=1)
+                 ["pm10", "pm2_5"], past_days=WINDOW_DAYS + 1, forecast_days=1)
     cams = cams.rename(columns={"pm10": "cams_pm10", "pm2_5": "cams_pm2_5"})
     cutoff = now.replace(hour=ISSUE_HOUR - 1, minute=0, second=0, microsecond=0)
     cams = cams[cams.time <= cutoff]  # samo ono što je poznato u trenutku izdavanja
@@ -73,9 +82,9 @@ def live_inputs(now: datetime) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 def predict(cams: pd.DataFrame, met: pd.DataFrame, today: pd.Timestamp) -> pd.DataFrame:
     rows = []
-    for pol, col in [("pm10", "cams_pm10"), ("pm2_5", "cams_pm2_5")]:
+    for pol, col, _ in POLLUTANTS:
         for h in HORIZONS:
-            df = build_dataset(cams, met, col, h, stations=sorted(DISPLAY))
+            df = build_dataset(cams, met, col, h, stations=CELLS)
             df = df[df.issue_day == today]
             out = df[["station", "issue_day", "target_day"]].copy()
             for q in QUANTILES:
@@ -85,6 +94,39 @@ def predict(cams: pd.DataFrame, met: pd.DataFrame, today: pd.Timestamp) -> pd.Da
             out[qs] = np.sort(out[qs].values, axis=1)
             rows.append(out.assign(pollutant=pol, horizon=h))
     return pd.concat(rows, ignore_index=True)
+
+
+def calibrate(pred: pd.DataFrame, cams: pd.DataFrame, cutoff: pd.Timestamp) -> pd.DataFrame:
+    """Raširi prognozu ćelija na svih 9 stanica i pomnoži faktorom stanice.
+
+    Faktor koristi samo mjerenja do cutoff-a (17:00 danas). Ako mjerenja nisu
+    dostupna, ide sirova CAMS-skala uz vidljivo upozorenje (faktor 1).
+    """
+    try:
+        fhmz = load_fhmz()
+        factors = {pol: station_factors(fhmz, cams, fcol, col, cutoff)
+                   for pol, col, fcol in POLLUTANTS}
+    except Exception as e:  # noqa: BLE001 - prognoza ide i bez kalibracije
+        print(f"UPOZORENJE: kalibracija nije uspjela ({e!r}), šaljem sirovu prognozu")
+        factors = None
+    qs = [f"q{int(q * 100)}" for q in QUANTILES]
+    rows = []
+    for station in DISPLAY:
+        part = pred[pred.station == CELL_OF.get(station, station)].copy()
+        part["cell"] = part.pop("station")
+        part["station"] = station
+        part = part.rename(columns={q: f"{q}_cams" for q in qs})
+        part["faktor"] = [factor_for(factors[p], station) if factors else 1.0
+                          for p in part.pollutant]
+        for q in qs:
+            part[q] = part[f"{q}_cams"] * part.faktor
+        rows.append(part)
+    out = pd.concat(rows, ignore_index=True)
+    if factors:
+        for pol, f in factors.items():
+            print(f"Faktori {pol} (mreža {f.attrs['network']:.2f}): "
+                  + ", ".join(f"{s} {v:.2f} ({n} h)" for s, v, n in zip(f.index, f.faktor, f.n_sati)))
+    return out
 
 
 def category(x: float) -> tuple[str, str]:
@@ -104,7 +146,7 @@ def message(pred: pd.DataFrame) -> str:
             lines.append(f"{emoji} {DISPLAY[r.station]}: {name}, ~{r.q50:.0f} µg/m³ "
                          f"({r.q10:.0f}–{r.q90:.0f})")
         lines.append("")
-    lines.append("<i>Eksperimentalni model, nije zvanični izvor. "
+    lines.append("<i>Eksperimentalni model korigovan na mjerenja stanica, nije zvanični izvor. "
                  "Mjerenja uživo: fhmzbih.gov.ba</i>")
     return "\n".join(lines)
 
@@ -126,7 +168,8 @@ def main() -> int:
             print("GREŠKA:", "; ".join(problems))
             return 1
     cams, met = live_inputs(now)
-    pred = predict(cams, met, today)
+    cutoff = pd.Timestamp(now.replace(hour=ISSUE_HOUR - 1, minute=0, second=0, microsecond=0))
+    pred = calibrate(predict(cams, met, today), cams, cutoff)
     text = message(pred)
     print(text)
     if dry:
