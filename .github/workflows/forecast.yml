@@ -7,14 +7,23 @@ on:
         description: "Samo ispiši poruku, ne šalji u kanal"
         type: boolean
         default: true
-  # Dva termina pokrivaju ljetno i zimsko vrijeme; skripta šalje samo
-  # poslije 18:00 lokalno i samo jednom dnevno.
+  # Skripta šalje samo poslije 18:00 lokalno i samo jednom dnevno, pa
+  # višak termina ne smeta. GitHub često preskoči ili kasni sa scheduled
+  # runovima, zato rezervni termini do ~21:20 lokalno.
   schedule:
     - cron: "20 16 * * *"
     - cron: "20 17 * * *"
+    - cron: "50 17 * * *"
+    - cron: "20 18 * * *"
+    - cron: "20 19 * * *"
 
 permissions:
   contents: write
+
+# runovi idu jedan po jedan, pa sljedeći vidi već snimljenu prognozu i ne šalje duplo
+concurrency:
+  group: forecast
+  cancel-in-progress: false
 
 jobs:
   forecast:
