@@ -33,7 +33,7 @@ from collect import DATA, HEADERS, STATIONS
 URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
 LEADS = [2, 3]
 VARIABLES = ["temperature_2m", "relative_humidity_2m", "precipitation", "pressure_msl",
-             "wind_speed_10m", "wind_direction_10m", "boundary_layer_height"]
+             "wind_speed_10m", "wind_direction_10m"]  # visina graničnog sloja nije u arhivi
 # vrh Bjelašnice, za mjeru inverzije (temperatura gore minus dolje)
 UPPER = ("bjelasnica_vrh", 43.7156, 18.2564)
 FIRST_YEAR = 2023
