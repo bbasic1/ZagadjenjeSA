@@ -1,0 +1,48 @@
+name: Dashboard tačnosti
+
+# Statična stranica na GitHub Pages: poslane prognoze naspram FHMZ mjerenja.
+# Ne commituje ništa u repo; stranica se pravi iz data/ i objavljuje kao Pages artifact.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "40 5 * * *"      # jutro: jučerašnji dnevni prosjek je kompletan
+  workflow_run:               # odmah poslije večernje prognoze
+    workflows: ["Večernja prognoza"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths: [dashboard.py, categories.py, .github/workflows/dashboard.yml]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main           # workflow_run inače uzme commit prije snimljene prognoze
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15"
+      - run: pip install -r requirements.txt
+      - run: python dashboard.py
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

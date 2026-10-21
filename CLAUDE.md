@@ -37,6 +37,8 @@ Ako primijetiš kod koji krši ovo, zaustavi se i reci to prije nego nastaviš.
 | `baseline.py` | Greška perzistencije i sirovog CAMS-a → `reports/baseline.md` |
 | `train_v1.py` | Validacija modela → `reports/model_v1.md`; `--final` snima modele u `models/` |
 | `forecast.py` | Večernja prognoza, poruka u Telegram, snimak u `data/predictions/` (`--dry` samo ispiše) |
+| `dashboard.py` | Javni dashboard tačnosti: `data/predictions` naspram FHMZ → `site/` (GitHub Pages, ne commituje se) |
+| `categories.py` | Skala kategorija indeksa kvaliteta zraka FHMZ (PM10, PM2.5) |
 | `send_telegram.py` | Slanje u kanal; `--test` šalje probnu poruku |
 | `data/fhmz/YYYY-MM.csv` | Satna mjerenja, long: `station,pollutant,time_utc,value,fetched_at`, bez duplikata |
 | `data/forecast/YYYY-MM-DD_00\|12.csv` | Snimci prognoze dvaput dnevno: `issued_utc,station,valid_utc,` meteo, `cams_pm10,cams_pm2_5` |
@@ -49,6 +51,7 @@ GitHub Actions (`.github/workflows/`):
 | `collect.yml` | Svaki sat (minuta 17, UTC); GitHub često preskače runove, zato tako često |
 | `forecast.yml` | 16:20 i 17:20 UTC; šalje jednom dnevno, poslije 18:00 lokalno. Ručni run po defaultu ne šalje |
 | `cams_archive.yml`, `meteo_archive.yml` | Ručno ili kad se promijeni skripta |
+| `dashboard.yml` | Ujutro 05:40 UTC i poslije večernje prognoze; objavljuje GitHub Pages |
 | `telegram_test.yml` | Ručno, probna poruka |
 
 Secreti: `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` (@kanal, bot je admin). Svi workflowi commituju kao `air-bot`.
