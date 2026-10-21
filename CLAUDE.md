@@ -23,9 +23,9 @@ Ako primijetiš kod koji krši ovo, zaustavi se i reci to prije nego nastaviš.
 - **Varijable:** perzistencija (zadnja 24 h, 6 h, zadnji sat, 72 h prosjek i max, trend), inverzija (prognozirana temperatura vrha Bjelašnice minus kotlina, jer 850 hPa ne postoji u arhivi prognoza), vjetar, padavine, vlažnost, pritisak, stepen grijanja (ispod 15 °C), sezonalnost, stanica. Visina graničnog sloja nije u arhivi prognoza.
 - **Baselineovi:** perzistencija (glavni), klimatologija, sirovi CAMS.
 - **Metrike:** MAE (µg/m³), skill prema perzistenciji, MAE na danima promjene (pomak ≥10 µg/m³), tačnost kategorije, pokrivenost intervala 0.1–0.9 (cilj 80 %).
-- **Rezultat v1** (`reports/model_v1.md`, cilj CAMS): PM10 D+1 MAE 8.3 naspram 11.9 za perzistenciju, D+2 9.2 naspram 13.8; pokrivenost intervala ~65 %, preuzak.
+- **Rezultat v1** (`reports/model_v1.md`, cilj CAMS): PM10 D+1 MAE 8.3 naspram 11.9 za perzistenciju, D+2 9.2 naspram 13.8; pokrivenost sirovog intervala ~65 %, preuzak; zato se širi CQR korekcijom (`conformal.py`, `reports/conformal.md`): na zimi 2025/26, uz korekciju iz 2024/25, pokrivenost je 81–84 %. Korekcija se računa samo iz prethodne zime i samo širi raspon. Na stanicama treba ponovo provjeriti kad se skupe parovi.
 - **Fallback:** ako model ili podaci zakažu, šalje se perzistencija.
-- Kategorije u poruci zasad prate EEA skalu za PM10; treba ih uskladiti sa zvaničnom skalom (Zavod za javno zdravstvo KS / FHMZ). Poruka uvijek nosi ogradu da bot nije zvaničan izvor.
+- Kategorije u poruci prate skalu indeksa kvaliteta zraka FHMZ (`categories.py`, PM10: odličan ≤15, dobar ≤45, umjeren ≤120, zagađen ≤195, vrlo zagađen ≤270). FHMZ je primjenjuje na satne vrijednosti, mi na dnevni prosjek. Poruka uvijek nosi ogradu da bot nije zvaničan izvor.
 
 ## Struktura repoa
 
@@ -36,6 +36,7 @@ Ako primijetiš kod koji krši ovo, zaustavi se i reci to prije nego nastaviš.
 | `fetch_meteo_archive.py` | Arhiva meteo prognoza (Previous Runs, 2023–danas) → `data/meteo/previous_runs.csv.gz` |
 | `baseline.py` | Greška perzistencije i sirovog CAMS-a → `reports/baseline.md` |
 | `train_v1.py` | Validacija modela → `reports/model_v1.md`; `--final` snima modele u `models/` |
+| `conformal.py` | CQR korekcija raspona 10–90 % → `reports/conformal.md`; `--final` snima `models/conformal.json` |
 | `forecast.py` | Večernja prognoza, poruka u Telegram, snimak u `data/predictions/` (`--dry` samo ispiše) |
 | `dashboard.py` | Javni dashboard tačnosti: `data/predictions` naspram FHMZ → `site/` (GitHub Pages, ne commituje se) |
 | `categories.py` | Skala kategorija indeksa kvaliteta zraka FHMZ (PM10, PM2.5) |
@@ -75,7 +76,7 @@ Pokretanje lokalno: `pip install -r requirements.txt && python collect.py`.
 
 - Ne mijenjaj format postojećih CSV fajlova bez dogovora; arhiva se ne može ponovo prikupiti.
 - Greške ne gutaj tiho: jedna stanica smije pasti bez rušenja ostalih, ali neuspjeh mora biti vidljiv (log i izlazni kod 1).
-- Kad se promijeni skup features ili arhiva, ponovo istreniraj `models/` (`python train_v1.py --final`) i probaj `forecast.py --dry` prije spajanja.
+- Kad se promijeni skup features ili arhiva, ponovo istreniraj `models/` (`python train_v1.py --final`, pa `python conformal.py --final`) i probaj `forecast.py --dry` prije spajanja.
 - Za scraper dodaj testove koji provjeravaju format stranice, jer FHMZ može promijeniti HTML.
 
 ## Faze
