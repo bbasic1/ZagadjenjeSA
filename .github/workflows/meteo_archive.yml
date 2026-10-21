@@ -1,0 +1,30 @@
+name: Meteo arhiva prognoza
+
+on:
+  workflow_dispatch:          # ručno ponovno povlačenje arhive
+  push:
+    paths:
+      - fetch_meteo_archive.py # promjena skripte = nova arhiva
+      - .github/workflows/meteo_archive.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15"
+      - run: pip install -r requirements.txt
+      - run: python fetch_meteo_archive.py
+      - name: Sačuvaj arhivu u repo
+        run: |
+          git config user.name "air-bot"
+          git config user.email "air-bot@users.noreply.github.com"
+          git add data/meteo/
+          git commit -m "Meteo arhiva $(date -u +'%Y-%m-%d %H:%M')" || exit 0
+          git pull --rebase
+          git push
