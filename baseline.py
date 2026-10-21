@@ -164,6 +164,12 @@ def main() -> None:
         parts.append(f"CAMS od {cams.time.min():%d.%m.%Y} do {cams.time.max():%d.%m.%Y}. "
                      "CAMS je izglađen i ne vidi vrhove u kotlini, pa je ovo mjera "
                      "dinamike, ne prave greške na stanici.\n")
+        # stanice u istoj CAMS ćeliji imaju identičan niz, pa nisu nezavisne
+        wide = cams.pivot_table(index="time", columns="station", values="cams_pm10")
+        same = [f"{a} = {b}" for i, a in enumerate(wide) for b in list(wide)[i + 1:]
+                if wide[a].equals(wide[b])]
+        if same:
+            parts.append("Iste CAMS ćelije (identičan niz): " + ", ".join(same) + ".\n")
         season = cams[cams.time.dt.month.isin([10, 11, 12, 1, 2, 3])]
         for pol, cams_col in POLLUTANTS.items():
             pairs = build_pairs(season.rename(columns={cams_col: pol}), pol, None, None)
