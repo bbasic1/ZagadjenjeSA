@@ -24,7 +24,9 @@ import pandas as pd
 import requests
 
 from baseline import load_fhmz
+from categories import ADVICE_SENSITIVE, category
 from calibrate import WINDOW_DAYS, factor_for, station_factors
+from conformal import load_config as load_conformal, widen
 from collect import DATA, HEADERS, LOCAL_TZ, STATIONS
 from fetch_meteo_archive import VARIABLES, locations
 from send_telegram import check_config, send
@@ -39,9 +41,6 @@ DISPLAY = {
     "ilijas": "Ilijaš", "ivan_sedlo": "Ivan Sedlo",
 }
 POLLUTANTS = [("pm10", "cams_pm10", "PM10"), ("pm2_5", "cams_pm2_5", "PM2_5")]
-# EEA skala za dnevni PM10 (µg/m³); uskladiti sa skalom Zavoda kad je potvrdimo
-CATEGORIES = [(20, "🟢", "dobar"), (40, "🟡", "prihvatljiv"), (50, "🟠", "umjeren"),
-              (100, "🔴", "loš"), (150, "🟣", "vrlo loš"), (np.inf, "⚫", "izuzetno loš")]
 DAYS = ["ponedjeljak", "utorak", "srijeda", "četvrtak", "petak", "subota", "nedjelja"]
 DAYS_ACC = ["ponedjeljak", "utorak", "srijedu", "četvrtak", "petak", "subotu", "nedjelju"]
 TREND_UG = 5  # promjena medijana stanica (µg/m³) koju vrijedi spomenuti u uvodu
@@ -84,6 +83,7 @@ def live_inputs(now: datetime) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 def predict(cams: pd.DataFrame, met: pd.DataFrame, today: pd.Timestamp) -> pd.DataFrame:
     rows = []
+    conformal = load_conformal()
     for pol, col, _ in POLLUTANTS:
         for h in HORIZONS:
             df = build_dataset(cams, met, col, h, stations=CELLS)
@@ -94,6 +94,12 @@ def predict(cams: pd.DataFrame, met: pd.DataFrame, today: pd.Timestamp) -> pd.Da
                 out[f"q{int(q * 100)}"] = np.expm1(model.predict(df.reindex(columns=model.feature_name())))
             qs = [f"q{int(q * 100)}" for q in QUANTILES]
             out[qs] = np.sort(out[qs].values, axis=1)
+            # raspon 10–90 % raširen po CQR korekciji (conformal.py), jer je sirov preuzak
+            c = (conformal or {}).get(f"{pol}_h{h}")
+            if c:
+                out["q10"], out["q90"] = widen(out.q10, out.q90, c)
+            else:
+                print(f"UPOZORENJE: nema CQR korekcije za {pol} D+{h}, raspon je sirov (preuzak)")
             rows.append(out.assign(pollutant=pol, horizon=h))
     return pd.concat(rows, ignore_index=True)
 
@@ -131,10 +137,6 @@ def calibrate(pred: pd.DataFrame, cams: pd.DataFrame, cutoff: pd.Timestamp) -> p
     return out
 
 
-def category(x: float) -> tuple[str, str]:
-    return next((e, n) for limit, e, n in CATEGORIES if x <= limit)
-
-
 def intro(pm: pd.DataFrame) -> list[str]:
     """Pozdrav, dani i kratak trend; sve izvedeno iz same prognoze."""
     d1, d2 = (pm[pm.horizon == h].target_day.iloc[0] for h in HORIZONS)
@@ -158,14 +160,20 @@ def message(pred: pd.DataFrame) -> str:
         label = "Sutra" if h == 1 else "Prekosutra"
         lines.append(f"📅 <b>{label}, {DAYS[day.dayofweek]} {day:%d.%m.}</b> (PM10, dnevni prosjek)")
         for _, r in part.iterrows():
-            emoji, name = category(r.q50)
+            _, emoji, name = category(r.q50, "pm10")
             lines.append(f"{emoji} {DISPLAY[r.station]}: {name}, ~{r.q50:.0f} µg/m³ "
                          f"({r.q10:.0f}–{r.q90:.0f})")
+        lines.append("")
+    # preporuka FHMZ po najgoroj stanici za sutra
+    tomorrow = pm[pm.horizon == HORIZONS[0]]
+    worst = max(category(v, "pm10") for v in tomorrow.q50)
+    if worst[2] in ADVICE_SENSITIVE:
+        lines.append(f"Savjet FHMZ za kategoriju „{worst[2]}“ (sutra): {ADVICE_SENSITIVE[worst[2]]}.")
         lines.append("")
     lines.append("U zagradi je raspon u koji očekujemo stvarni prosjek. Lijepo veče i čujemo se sutra! 💚")
     lines.append("")
     lines.append("<i>Eksperimentalni model korigovan na mjerenja stanica, nije zvanični izvor. "
-                 "Mjerenja uživo: fhmzbih.gov.ba</i>")
+                 "Kategorije po skali indeksa FHMZ. Mjerenja uživo: fhmzbih.gov.ba</i>")
     return "\n".join(lines)
 
 
