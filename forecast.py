@@ -151,9 +151,41 @@ def intro(pm: pd.DataFrame) -> list[str]:
     return lines + [""]
 
 
+FALLBACK_MIN_HOURS = 12  # perzistencija samo za stanice s bar ovoliko sati u zadnja 24 h
+
+
+def persistence(today: pd.Timestamp, cutoff: pd.Timestamp) -> pd.DataFrame:
+    """Rezervna prognoza "sutra kao danas": prosjek FHMZ mjerenja zadnja 24 h do 17:00.
+
+    Koristi se samo kad model ili njegovi ulazi zakažu. Isti oblik kao calibrate().
+    """
+    fhmz = load_fhmz()
+    window = fhmz[(fhmz.time > cutoff - pd.Timedelta(hours=24)) & (fhmz.time <= cutoff)]
+    rows = []
+    for pol, _, fcol in POLLUTANTS:
+        g = window.groupby("station")[fcol]
+        mean = g.mean()[g.count() >= FALLBACK_MIN_HOURS]
+        for station, v in mean.items():
+            for h in HORIZONS:
+                rows.append({"station": station, "issue_day": today,
+                             "target_day": today + pd.Timedelta(days=h), "pollutant": pol,
+                             "horizon": h, "q10": np.nan, "q50": v, "q90": np.nan})
+    out = pd.DataFrame(rows)
+    if out.empty or not (out.pollutant == "pm10").any():
+        raise RuntimeError("ni perzistencija nije moguća: nema dovoljno FHMZ mjerenja PM10")
+    missing = sorted(set(DISPLAY) - set(out[out.pollutant == "pm10"].station))
+    if missing:
+        print(f"UPOZORENJE: perzistencija bez stanica {missing} (premalo mjerenja)")
+    return out.assign(model="perzistencija")
+
+
 def message(pred: pd.DataFrame) -> str:
     pm = pred[pred.pollutant == "pm10"]
+    fallback = "model" in pm and (pm.model == "perzistencija").any()
     lines = intro(pm)
+    if fallback:
+        lines += ["⚠️ Model danas nije dostupan, pa je prognoza jednostavna: "
+                  "sutra i prekosutra kao zadnja 24 h mjerenja.", ""]
     for h in HORIZONS:
         part = pm[pm.horizon == h].sort_values("q50", ascending=False)
         day = part.target_day.iloc[0]
@@ -161,8 +193,8 @@ def message(pred: pd.DataFrame) -> str:
         lines.append(f"📅 <b>{label}, {DAYS[day.dayofweek]} {day:%d.%m.}</b> (PM10, dnevni prosjek)")
         for _, r in part.iterrows():
             _, emoji, name = category(r.q50, "pm10")
-            lines.append(f"{emoji} {DISPLAY[r.station]}: {name}, ~{r.q50:.0f} µg/m³ "
-                         f"({r.q10:.0f}–{r.q90:.0f})")
+            spread = "" if pd.isna(r.q10) else f" ({r.q10:.0f}–{r.q90:.0f})"
+            lines.append(f"{emoji} {DISPLAY[r.station]}: {name}, ~{r.q50:.0f} µg/m³{spread}")
         lines.append("")
     # preporuka FHMZ po najgoroj stanici za sutra
     tomorrow = pm[pm.horizon == HORIZONS[0]]
@@ -170,9 +202,13 @@ def message(pred: pd.DataFrame) -> str:
     if worst[2] in ADVICE_SENSITIVE:
         lines.append(f"Savjet FHMZ za kategoriju „{worst[2]}“ (sutra): {ADVICE_SENSITIVE[worst[2]]}.")
         lines.append("")
-    lines.append("U zagradi je raspon u koji očekujemo stvarni prosjek. Lijepo veče i čujemo se sutra! 💚")
+    if not fallback:
+        lines.append("U zagradi je raspon u koji očekujemo stvarni prosjek.")
+    lines.append("Lijepo veče i čujemo se sutra! 💚")
     lines.append("")
-    lines.append("<i>Eksperimentalni model korigovan na mjerenja stanica, nije zvanični izvor. "
+    source = ("Rezervna prognoza iz mjerenja FHMZ" if fallback
+              else "Eksperimentalni model korigovan na mjerenja stanica")
+    lines.append(f"<i>{source}, nije zvanični izvor. "
                  "Kategorije po skali indeksa FHMZ. Mjerenja uživo: fhmzbih.gov.ba</i>")
     return "\n".join(lines)
 
@@ -193,18 +229,23 @@ def main() -> int:
         if problems:
             print("GREŠKA:", "; ".join(problems))
             return 1
-    cams, met = live_inputs(now)
     cutoff = pd.Timestamp(now.replace(hour=ISSUE_HOUR - 1, minute=0, second=0, microsecond=0))
-    pred = calibrate(predict(cams, met, today), cams, cutoff)
+    failed = False
+    try:
+        cams, met = live_inputs(now)
+        pred = calibrate(predict(cams, met, today), cams, cutoff).assign(model="lightgbm")
+    except Exception as e:  # noqa: BLE001 - umjesto tišine šaljemo perzistenciju, run ipak pada
+        print(f"GREŠKA: model nije uspio ({e!r}), šaljem perzistenciju")
+        pred, failed = persistence(today, cutoff), True
     text = message(pred)
     print(text)
     if dry:
-        return 0
+        return 1 if failed else 0
     send(text)
     path.parent.mkdir(parents=True, exist_ok=True)
     pred.assign(issued_local=now.strftime("%Y-%m-%d %H:%M")).to_csv(path, index=False, float_format="%.1f")
     print(f"Poslano i snimljeno -> {path}")
-    return 0
+    return 1 if failed else 0  # crven run, da se kvar modela vidi
 
 
 if __name__ == "__main__":
