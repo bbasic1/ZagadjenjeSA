@@ -5,7 +5,7 @@ Token i adresa kanala dolaze iz okruženja (GitHub secreti):
   TELEGRAM_TOKEN    oblika 123456789:AAH...   (od @BotFather)
   TELEGRAM_CHAT_ID  @imekanala ili -100...    (bot mora biti admin kanala)
 
-python send_telegram.py --test   pošalje probnu poruku
+python -m bot.send_telegram --test   pošalje probnu poruku
 """
 
 import os

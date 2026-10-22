@@ -19,11 +19,11 @@ Cilj je pobijediti perzistenciju, tj. pretpostavku "sutra će biti kao danas". N
 
 ## Kako radi
 
-1. **Prikupljanje** (`collect.py`, svaki sat preko GitHub Actions): satna mjerenja sa stranica FHMZ stanica i snimci Open-Meteo prognoze (meteo varijable i CAMS PM).
-2. **Model** (`train_v1.py`): LightGBM s kvantilnom regresijom (0.1, 0.5, 0.9), poseban model za D+1 i D+2. Pretreniran je na CAMS arhivi od 2013. Varijable su perzistencija zadnjih sati i dana, inverzija (temperatura Bjelašnice minus kotlina), vjetar, padavine, vlažnost, pritisak, stepen grijanja i sezonalnost.
-3. **Kalibracija** (`calibrate.py`, `conformal.py`): faktor po stanici iz zadnjih 14 dana mjerenja i CQR korekcija koja širi raspon do ciljane pokrivenosti od 80 %.
-4. **Večernja prognoza** (`forecast.py`, 18:00 po lokalnom vremenu): poruka u Telegram kanal i snimak u `data/predictions/`. Ako model ili podaci zakažu, šalje se perzistencija.
-5. **Dashboard** (`dashboard.py`): poređenje poslanih prognoza s mjerenjima, objavljeno na GitHub Pages.
+1. **Prikupljanje** (`ingest/collect.py`, svaki sat preko GitHub Actions): satna mjerenja sa stranica FHMZ stanica i snimci Open-Meteo prognoze (meteo varijable i CAMS PM).
+2. **Model** (`model/train_v1.py`): LightGBM s kvantilnom regresijom (0.1, 0.5, 0.9), poseban model za D+1 i D+2. Pretreniran je na CAMS arhivi od 2013. Varijable su perzistencija zadnjih sati i dana, inverzija (temperatura Bjelašnice minus kotlina), vjetar, padavine, vlažnost, pritisak, stepen grijanja i sezonalnost.
+3. **Kalibracija** (`model/calibrate.py`, `model/conformal.py`): faktor po stanici iz zadnjih 14 dana mjerenja i CQR korekcija koja širi raspon do ciljane pokrivenosti od 80 %.
+4. **Večernja prognoza** (`bot/forecast.py`, 18:00 po lokalnom vremenu): poruka u Telegram kanal i snimak u `data/predictions/`. Ako model ili podaci zakažu, šalje se perzistencija.
+5. **Dashboard** (`dashboard/dashboard.py`): poređenje poslanih prognoza s mjerenjima, objavljeno na GitHub Pages.
 
 ### Bez curenja podataka
 
@@ -33,16 +33,10 @@ Vremenske varijable za buduće dane (vjetar, padavine, temperatura) dolaze **sam
 
 | Putanja | Šta je |
 | --- | --- |
-| `collect.py` | Prikupljanje FHMZ mjerenja i snimaka Open-Meteo prognoze |
-| `fetch_cams_archive.py`, `fetch_meteo_archive.py` | Arhiva CAMS-a i historijskih meteo prognoza |
-| `baseline.py` | Greška perzistencije i sirovog CAMS-a → `reports/baseline.md` |
-| `train_v1.py` | Validacija i trening modela → `reports/model_v1.md`, `models/` |
-| `calibrate.py` | Kalibracija prognoze po stanici |
-| `conformal.py` | Korekcija raspona 10–90 % → `reports/conformal.md` |
-| `forecast.py` | Večernja prognoza i slanje u Telegram |
-| `send_telegram.py` | Slanje poruke u kanal |
-| `dashboard.py` | Dashboard tačnosti → `site/` |
-| `categories.py` | Skala kategorija indeksa kvaliteta zraka FHMZ |
+| `ingest/` | Prikupljanje: FHMZ mjerenja i snimci Open-Meteo prognoze (`collect.py`), arhiva CAMS-a i historijskih meteo prognoza (`fetch_cams_archive.py`, `fetch_meteo_archive.py`) |
+| `model/` | Perzistencija i sirovi CAMS (`baseline.py`), validacija i trening (`train_v1.py`), kalibracija po stanici (`calibrate.py`), korekcija raspona 10–90 % (`conformal.py`) |
+| `bot/` | Večernja prognoza (`forecast.py`), slanje u Telegram (`send_telegram.py`), skala kategorija FHMZ (`categories.py`) |
+| `dashboard/` | Dashboard tačnosti → `site/` |
 | `data/fhmz/` | Satna mjerenja po mjesecima (UTC) |
 | `data/forecast/` | Snimci prognoze dvaput dnevno |
 | `data/predictions/` | Svaka poslana prognoza |
@@ -55,17 +49,17 @@ Sva vremena u fajlovima su UTC.
 
 ## Pokretanje lokalno
 
-Potreban je Python 3.
+Potreban je Python 3. Skripte se pokreću kao moduli iz root foldera repoa (`python -m folder.skripta`).
 
 ```bash
 pip install -r requirements.txt
-python collect.py              # prikupi mjerenja i prognozu
-python forecast.py --dry       # ispiši večernju prognozu bez slanja
-python dashboard.py            # napravi dashboard u site/
+python -m ingest.collect          # prikupi mjerenja i prognozu
+python -m bot.forecast --dry      # ispiši večernju prognozu bez slanja
+python -m dashboard.dashboard     # napravi dashboard u site/
 python -m unittest discover tests
 ```
 
-Ponovni trening modela: `python train_v1.py --final`, pa `python conformal.py --final`.
+Ponovni trening modela: `python -m model.train_v1 --final`, pa `python -m model.conformal --final`.
 
 Slanje u Telegram traži varijable okruženja `TELEGRAM_TOKEN` i `TELEGRAM_CHAT_ID`. U repou su postavljene kao GitHub Actions secreti i nikad se ne commituju.
 

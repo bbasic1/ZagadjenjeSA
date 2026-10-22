@@ -10,8 +10,8 @@ koja su bila poznata u 18:00 dana izdavanja (zadnja 24 h do 17:00).
 Uz male uzorke prikazuje interval nesigurnosti (bootstrap po danima) i
 jasno piše kad razlika još ništa ne znači.
 
-python dashboard.py                      # data/predictions -> site/
-python dashboard.py --predictions DIR --out DIR
+python -m dashboard.dashboard            # data/predictions -> site/
+python -m dashboard.dashboard --predictions DIR --out DIR
 """
 
 import argparse
@@ -24,9 +24,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from baseline import CHANGE_THRESHOLD, daily_mean, load_fhmz, persistence
-from categories import SOURCE as SCALE_SOURCE, category
-from collect import DATA, LOCAL_TZ
+from model.baseline import CHANGE_THRESHOLD, daily_mean, load_fhmz, persistence
+from bot.categories import SOURCE as SCALE_SOURCE, category
+from ingest.collect import DATA, LOCAL_TZ
 
 DISPLAY = {
     "bjelave": "Bjelave", "vijecnica": "Vijećnica", "otoka": "Otoka", "ilidza": "Ilidža",
@@ -404,7 +404,7 @@ Prognoze vremena i CAMS: Open-Meteo, CC BY 4.0. <a href="{REPO}">Kod</a>.</p>
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--predictions", type=Path, default=DATA / "predictions")
-    ap.add_argument("--out", type=Path, default=Path(__file__).parent / "site")
+    ap.add_argument("--out", type=Path, default=Path(__file__).resolve().parents[1] / "site")
     args = ap.parse_args()
     now = datetime.now(LOCAL_TZ)
     pred = load_predictions(args.predictions)

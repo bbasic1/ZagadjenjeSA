@@ -18,7 +18,7 @@ from datetime import date, timedelta
 import pandas as pd
 import requests
 
-from collect import DATA, HEADERS, STATIONS
+from ingest.collect import DATA, HEADERS, STATIONS
 
 URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 FIRST_YEAR = 2013  # najranije što cams_europe na Open-Meteo može imati

@@ -1,11 +1,8 @@
 name: CAMS arhiva
 
 on:
-  workflow_dispatch:          # ručno ponovno povlačenje arhive
-  push:
-    paths:
-      - fetch_cams_archive.py # promjena skripte = nova arhiva
-      - .github/workflows/cams_archive.yml
+  # samo ručno: novo povlačenje troši Open-Meteo limit koji treba satnom prikupljanju
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -19,7 +16,7 @@ jobs:
         with:
           python-version: "3.15"
       - run: pip install -r requirements.txt
-      - run: python fetch_cams_archive.py
+      - run: python -m ingest.fetch_cams_archive
       - name: Sačuvaj arhivu u repo
         run: |
           git config user.name "air-bot"

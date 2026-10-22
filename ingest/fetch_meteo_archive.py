@@ -28,7 +28,7 @@ from datetime import date, timedelta
 import pandas as pd
 import requests
 
-from collect import DATA, HEADERS, STATIONS
+from ingest.collect import DATA, HEADERS, STATIONS
 
 URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
 LEADS = [2, 3]

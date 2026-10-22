@@ -21,8 +21,8 @@ Granica: model predviđa CAMS, a poruka stanicu. Greška CAMS -> stanica nije
 u ovoj korekciji, pa će pokrivenost na stanicama biti niža; to mjeri dashboard,
 a kad se skupi dovoljno parova, istu korekciju treba računati na stanicama.
 
-python conformal.py           izvještaj reports/conformal.md
-python conformal.py --final   + models/conformal.json (čita forecast.py)
+python -m model.conformal           izvještaj reports/conformal.md
+python -m model.conformal --final   + models/conformal.json (čita forecast.py)
 """
 
 import json
@@ -32,8 +32,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from baseline import load_cams
-from train_v1 import (HEATING, HORIZONS, MODELS, TEST_SEASONS, build_dataset, feature_cols,
+from model.baseline import load_cams
+from model.train_v1 import (HEATING, HORIZONS, MODELS, TEST_SEASONS, build_dataset, feature_cols,
                       fit_predict, load_meteo)
 
 ALPHA = 0.1                                    # po strani, ukupno 80 %
@@ -41,7 +41,7 @@ CAL_WINTERS = 1                                # koliko prethodnih zima ulazi u 
 # zime za koje pravimo prognoze van uzorka; prva služi samo kao kalibracija
 SEASONS = [("2023-10-01", "2024-04-01")] + TEST_SEASONS
 CONFIG = MODELS / "conformal.json"
-REPORT = Path(__file__).parent / "reports" / "conformal.md"
+REPORT = Path(__file__).resolve().parents[1] / "reports" / "conformal.md"
 POLS = [("pm10", "cams_pm10", "PM10"), ("pm2_5", "cams_pm2_5", "PM2.5")]
 
 

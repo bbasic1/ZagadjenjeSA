@@ -20,14 +20,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from collect import DATA, LOCAL_TZ
+from ingest.collect import DATA, LOCAL_TZ
 
 ISSUE_HOUR = 18          # lokalno vrijeme izdavanja prognoze
 MIN_HOURS = 18           # minimalno sati za valjan dnevni prosjek
 CHANGE_THRESHOLD = 10.0  # µg/m³: "dan promjene" ako se dnevni prosjek pomjeri bar ovoliko
 HORIZONS = [1, 2]
 POLLUTANTS = {"PM10": "cams_pm10", "PM2_5": "cams_pm2_5"}
-REPORT = Path(__file__).parent / "reports" / "baseline.md"
+REPORT = Path(__file__).resolve().parents[1] / "reports" / "baseline.md"
 
 
 # ------------------------------------------------------------ učitavanje
