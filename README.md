@@ -1,67 +1,69 @@
 # ZagadjenjeSA
 
-Prognoza zagađenja zraka u Sarajevu za sutra (D+1) i prekosutra (D+2), po mjernoj stanici. Svako veče poslije 18:00 Telegram bot **ZagađenkoBot** objavi prognozu u kanalu, a javni dashboard prati koliko su prognoze bile tačne:
+**English** · [Bosanski](README.bs.md)
 
-**Dashboard tačnosti:** https://bbasic1.github.io/ZagadjenjeSA/
+Air pollution forecasts for Sarajevo, Bosnia and Herzegovina, for tomorrow (D+1) and the day after (D+2), per monitoring station. Every evening after 18:00 local time the Telegram bot **ZagađenkoBot** posts the forecast to a public channel, and a public dashboard tracks how accurate past forecasts were:
 
-> **Ograda.** Ovo je eksperimentalni, nezavisni projekat. Nije zvanični izvor informacija o kvalitetu zraka. Zvanični podaci su na stranici [Federalnog hidrometeorološkog zavoda (FHMZ)](https://www.fhmzbih.gov.ba/).
+**Accuracy dashboard:** https://bbasic1.github.io/ZagadjenjeSA/
 
-## Šta se prognozira
+> **Disclaimer.** This is an experimental, independent project and not an official source of air quality information. Official data is published by the [Federal Hydrometeorological Institute (FHMZ)](https://www.fhmzbih.gov.ba/).
 
-- **PM10**, dnevni prosjek, za sve stanice (glavni target)
-- **PM2.5**, dnevni prosjek, za stanice koje ga mjere (Bjelave, Otoka, Ilidža, Vogošća, Hadžići)
+## What is forecast
 
-Uz srednju vrijednost prognoza daje i raspon (10–90 %) i kategoriju po skali indeksa kvaliteta zraka FHMZ.
+- **PM10** daily mean at every station (main target)
+- **PM2.5** daily mean at the stations that measure it (Bjelave, Otoka, Ilidža, Vogošća, Hadžići)
 
-Cilj je pobijediti perzistenciju, tj. pretpostavku "sutra će biti kao danas". Na razvojnom testu (zime 2024/25 i 2025/26, cilj CAMS) model ima MAE za PM10 od 8.3 µg/m³ za sutra, naspram 11.9 za perzistenciju (prekosutra 9.2 naspram 13.8). Detalji su u [`reports/`](reports/). Pravi završni test je sezona 2026/27 uživo: svaka prognoza se snimi prije nego što je mjerenje poznato.
+Each forecast includes a median, a 10–90 % range, and a category on the FHMZ air quality index scale.
 
-## Kako radi
+The goal is to beat persistence, the assumption that tomorrow will be like today. On the development test (winters 2024/25 and 2025/26, with CAMS as the target), the PM10 model has a MAE of 8.3 µg/m³ for tomorrow, against 11.9 for persistence (9.2 against 13.8 for the day after). Details are in [`reports/`](reports/). The real final test is the 2026/27 season, live: every forecast is saved before the measurement is known.
 
-1. **Prikupljanje** (`ingest/collect.py`, svaki sat preko GitHub Actions): satna mjerenja sa stranica FHMZ stanica i snimci Open-Meteo prognoze (meteo varijable i CAMS PM).
-2. **Model** (`model/train_v1.py`): LightGBM s kvantilnom regresijom (0.1, 0.5, 0.9), poseban model za D+1 i D+2. Pretreniran je na CAMS arhivi od 2013. Varijable su perzistencija zadnjih sati i dana, inverzija (temperatura Bjelašnice minus kotlina), vjetar, padavine, vlažnost, pritisak, stepen grijanja i sezonalnost.
-3. **Kalibracija** (`model/calibrate.py`, `model/conformal.py`): faktor po stanici iz zadnjih 14 dana mjerenja i CQR korekcija koja širi raspon do ciljane pokrivenosti od 80 %.
-4. **Večernja prognoza** (`bot/forecast.py`, 18:00 po lokalnom vremenu): poruka u Telegram kanal i snimak u `data/predictions/`. Ako model ili podaci zakažu, šalje se perzistencija.
-5. **Dashboard** (`dashboard/dashboard.py`): poređenje poslanih prognoza s mjerenjima, objavljeno na GitHub Pages.
+## How it works
 
-### Bez curenja podataka
+1. **Collection** (`ingest/collect.py`, hourly via GitHub Actions): hourly measurements from the FHMZ station pages, plus snapshots of the Open-Meteo forecast (weather variables and CAMS PM).
+2. **Model** (`model/train_v1.py`): LightGBM quantile regression (0.1, 0.5, 0.9), with a separate model for D+1 and D+2. It is pre-trained on the CAMS archive since 2013. Features are recent PM persistence, inversion strength (forecast temperature on Bjelašnica minus the valley), wind, precipitation, humidity, pressure, heating degrees and seasonality.
+3. **Calibration** (`model/calibrate.py`, `model/conformal.py`): a per-station factor from the last 14 days of measurements, and a CQR correction that widens the range towards 80 % coverage.
+4. **Evening forecast** (`bot/forecast.py`, 18:00 local time): a message to the Telegram channel and a snapshot in `data/predictions/`. If the model or the data fail, a persistence forecast is sent instead.
+5. **Dashboard** (`dashboard/dashboard.py`): compares the sent forecasts with measurements and publishes the result on GitHub Pages.
 
-Vremenske varijable za buduće dane (vjetar, padavine, temperatura) dolaze **samo iz prognoze** koja je bila dostupna u trenutku izdavanja, nikad iz kasnijih mjerenja. Za trening se koriste historijske prognoze iz Open-Meteo Previous Runs arhive. Mjerenja PM-a se koriste samo do 17:00 dana izdavanja, a validacija je isključivo klizeća po vremenu.
+### No data leakage
 
-## Struktura repoa
+Weather variables for future days (wind, precipitation, temperature) come **only from forecasts** that were available at issue time, never from later measurements. Training uses historical forecasts from the Open-Meteo Previous Runs archive. PM measurements are used only up to 17:00 on the issue day, and validation is strictly time-based (rolling, training always before testing).
 
-| Putanja | Šta je |
+## Repository layout
+
+| Path | Contents |
 | --- | --- |
-| `ingest/` | Prikupljanje: FHMZ mjerenja i snimci Open-Meteo prognoze (`collect.py`), arhiva CAMS-a i historijskih meteo prognoza (`fetch_cams_archive.py`, `fetch_meteo_archive.py`) |
-| `model/` | Perzistencija i sirovi CAMS (`baseline.py`), validacija i trening (`train_v1.py`), kalibracija po stanici (`calibrate.py`), korekcija raspona 10–90 % (`conformal.py`) |
-| `bot/` | Večernja prognoza (`forecast.py`), slanje u Telegram (`send_telegram.py`), skala kategorija FHMZ (`categories.py`) |
-| `dashboard/` | Dashboard tačnosti → `site/` |
-| `data/fhmz/` | Satna mjerenja po mjesecima (UTC) |
-| `data/forecast/` | Snimci prognoze dvaput dnevno |
-| `data/predictions/` | Svaka poslana prognoza |
-| `models/` | Istrenirani modeli i korekcija raspona |
-| `reports/` | Izvještaji o evaluaciji |
-| `tests/` | Testovi formata FHMZ stranica |
-| `.github/workflows/` | Raspored prikupljanja, prognoze, dashboarda i testova |
+| `ingest/` | Data collection: FHMZ measurements and Open-Meteo forecast snapshots (`collect.py`), CAMS archive and historical weather forecasts (`fetch_cams_archive.py`, `fetch_meteo_archive.py`) |
+| `model/` | Persistence and raw CAMS error (`baseline.py`), validation and training (`train_v1.py`), per-station calibration (`calibrate.py`), 10–90 % range correction (`conformal.py`) |
+| `bot/` | Evening forecast (`forecast.py`), Telegram sending (`send_telegram.py`), FHMZ index categories (`categories.py`) |
+| `dashboard/` | Accuracy dashboard → `site/` |
+| `data/fhmz/` | Hourly measurements by month (UTC) |
+| `data/forecast/` | Forecast snapshots, twice a day |
+| `data/predictions/` | Every forecast that was sent |
+| `models/` | Trained models and range correction |
+| `reports/` | Evaluation reports (in Bosnian) |
+| `tests/` | Tests for the FHMZ page format |
+| `.github/workflows/` | Schedules for collection, forecast, dashboard and tests |
 
-Sva vremena u fajlovima su UTC.
+All times in data files are UTC.
 
-## Pokretanje lokalno
+## Running locally
 
-Potreban je Python 3. Skripte se pokreću kao moduli iz root foldera repoa (`python -m folder.skripta`).
+Requires Python 3. Scripts run as modules from the repository root (`python -m folder.script`).
 
 ```bash
 pip install -r requirements.txt
-python -m ingest.collect          # prikupi mjerenja i prognozu
-python -m bot.forecast --dry      # ispiši večernju prognozu bez slanja
-python -m dashboard.dashboard     # napravi dashboard u site/
+python -m ingest.collect          # collect measurements and forecasts
+python -m bot.forecast --dry      # print the evening forecast without sending it
+python -m dashboard.dashboard     # build the dashboard into site/
 python -m unittest discover tests
 ```
 
-Ponovni trening modela: `python -m model.train_v1 --final`, pa `python -m model.conformal --final`.
+To retrain the models: `python -m model.train_v1 --final`, then `python -m model.conformal --final`.
 
-Slanje u Telegram traži varijable okruženja `TELEGRAM_TOKEN` i `TELEGRAM_CHAT_ID`. U repou su postavljene kao GitHub Actions secreti i nikad se ne commituju.
+Sending to Telegram needs the `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID` environment variables. In this repo they are GitHub Actions secrets and are never committed.
 
-## Izvori podataka
+## Data sources
 
-- Mjerenja: [FHMZ BiH](https://www.fhmzbih.gov.ba/)
-- Meteo prognoze i CAMS: [Open-Meteo](https://open-meteo.com/) (CC BY 4.0), CAMS je servis programa Copernicus
+- Measurements: [FHMZ BiH](https://www.fhmzbih.gov.ba/)
+- Weather forecasts and CAMS: [Open-Meteo](https://open-meteo.com/) (CC BY 4.0); CAMS is a Copernicus service
