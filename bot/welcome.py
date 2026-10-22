@@ -13,7 +13,7 @@ import sys
 
 from bot.send_telegram import call, check_config, send
 
-DASHBOARD = "https://bbasic1.github.io/zagadjenjesa/"
+DASHBOARD = "https://bbasic1.github.io/ZagadjenjeSA/"
 
 WELCOME = f"""👋 <b>Dobro došli u ZagađenkoBot!</b>
 
