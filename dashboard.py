@@ -45,7 +45,7 @@ def load_predictions(folder: Path) -> pd.DataFrame:
     files = sorted(folder.glob("*.csv"))
     if not files:
         return pd.DataFrame(columns=["station", "pollutant", "horizon", "issue_day",
-                                     "target_day", "q10", "q50", "q90"])
+                                     "target_day", "model", "q10", "q50", "q90"])
     df = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
     need = {"station", "pollutant", "horizon", "issue_day", "target_day", "q10", "q50", "q90"}
     missing = need - set(df.columns)
@@ -53,6 +53,9 @@ def load_predictions(folder: Path) -> pd.DataFrame:
         raise ValueError(f"predictions nemaju kolone {sorted(missing)}")
     for c in ("issue_day", "target_day"):
         df[c] = pd.to_datetime(df[c]).dt.normalize()
+    # stariji snimci nemaju kolonu model; tada je to uvijek bio LightGBM.
+    # Kad forecast.py padne na perzistenciju (fallback), q10 i q90 su prazni.
+    df["model"] = df["model"].fillna("lightgbm") if "model" in df else "lightgbm"
     # ako je isti dan slučajno snimljen dvaput, vrijedi prva (poslana) prognoza
     return df.drop_duplicates(["station", "pollutant", "horizon", "target_day"], keep="first")
 
@@ -116,19 +119,27 @@ def wilson(k: int, n: int, z: float = 1.645) -> tuple[float, float]:
     return 100 * (c - h), 100 * (c + h)
 
 
+def has_range(g: pd.DataFrame) -> pd.Series:
+    return g.q10.notna() & g.q90.notna()
+
+
 def score(g: pd.DataFrame, rng: np.random.Generator) -> dict:
     n = len(g)
     if n == 0:
         return {"n": 0}
     em, ep = (g.q50 - g.truth).abs(), (g.persistence - g.truth).abs()
     change = (g.truth - g.truth_issue_day).abs() >= CHANGE_THRESHOLD
-    inside = (g.truth >= g.q10) & (g.truth <= g.q90)
+    # MAE broji svaku poslanu prognozu (i fallback); raspon samo gdje ga je bilo
+    rg = g[has_range(g)]
+    inside = (rg.truth >= rg.q10) & (rg.truth <= rg.q90)
     return {
         "n": n, "dana": g.target_day.nunique(),
         "mae_m": em.mean(), "mae_p": ep.mean(),
         "skill": 100 * (1 - em.sum() / ep.sum()) if ep.sum() > 0 else math.nan,
         "skill_ci": skill_ci(g, rng),
-        "pokr": 100 * inside.mean(), "pokr_ci": wilson(int(inside.sum()), n),
+        "n_fallback": int((g.model != "lightgbm").sum()), "n_raspon": len(rg),
+        "pokr": 100 * inside.mean() if len(rg) else math.nan,
+        "pokr_ci": wilson(int(inside.sum()), len(rg)),
         "kat_m": 100 * cat_hits(g.q50, g.truth, g.pollutant).mean(),
         "kat_p": 100 * cat_hits(g.persistence, g.truth, g.pollutant).mean(),
         "n_prom": int(change.sum()),
@@ -162,10 +173,13 @@ def tiles(s: dict) -> str:
     if s["n"] == 0:
         return '<p class="muted">Još nema parova prognoza–mjerenje.</p>'
     lo, hi = s["pokr_ci"]
+    cov = (f"cilj 80 %, 90 % interval {lo:.0f}–{hi:.0f} %" if s["n_raspon"] else "nema prognoza s rasponom")
+    if s["n_fallback"]:
+        cov += f"; {s['n_fallback']} fallback bez raspona nije uračunato"
     items = [
         ("MAE modela", f(s["mae_m"]) + " µg/m³", f"perzistencija {f(s['mae_p'])} µg/m³"),
         ("Skill prema perzistenciji", f(s["skill"], 0, " %"), "više je bolje, 0 = isto"),
-        ("Pogođen raspon 10–90 %", f(s["pokr"], 0, " %"), f"cilj 80 %, 90 % interval {lo:.0f}–{hi:.0f} %"),
+        ("Pogođen raspon 10–90 %", f(s["pokr"], 0, " %"), cov),
         ("Tačna kategorija", f(s["kat_m"], 0, " %"), f"perzistencija {f(s['kat_p'], 0, ' %')}"),
         ("Dani promjene (≥10 µg/m³)", f(s["mae_m_prom"]) + " µg/m³" if s["n_prom"] else "–",
          f"perzistencija {f(s['mae_p_prom'])}, n = {s['n_prom']}"),
@@ -190,6 +204,12 @@ def station_table(ok: pd.DataFrame, rng) -> str:
             "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>")
 
 
+def range_text(r) -> str:
+    if math.isnan(r.q10) or math.isnan(r.q90):
+        return "perzistencija, bez raspona"
+    return f"{r.q10:.0f}–{r.q90:.0f}"
+
+
 def chart(g: pd.DataFrame, ymax: float, days: pd.DatetimeIndex) -> str:
     """Mala slika jedne stanice: raspon 10–90, medijan, mjerenje, perzistencija."""
     W, H, L, R, T, B = 300, 150, 30, 8, 8, 20
@@ -208,9 +228,12 @@ def chart(g: pd.DataFrame, ymax: float, days: pd.DatetimeIndex) -> str:
     for d in (x0, x1):
         out.append(f'<text class="ax" x="{X(d):.1f}" y="{H - 5}" text-anchor="middle">{d:%d.%m.}</text>')
     if len(g):
-        top = " ".join(f"{X(d):.1f},{Y(v):.1f}" for d, v in zip(g.target_day, g.q90))
-        bot = " ".join(f"{X(d):.1f},{Y(v):.1f}" for d, v in zip(g.target_day[::-1], g.q10[::-1]))
-        out.append(f'<polygon class="band" points="{top} {bot}"/>')
+        # raspon crta samo neprekinute dijelove; fallback dani (bez raspona) prekidaju traku
+        seg_id = (~has_range(g)).cumsum()
+        for _, seg in g[has_range(g)].groupby(seg_id[has_range(g)]):
+            top = " ".join(f"{X(d):.1f},{Y(v):.1f}" for d, v in zip(seg.target_day, seg.q90))
+            bot = " ".join(f"{X(d):.1f},{Y(v):.1f}" for d, v in zip(seg.target_day[::-1], seg.q10[::-1]))
+            out.append(f'<polygon class="band" points="{top} {bot}"/>')
         out.append('<polyline class="med" points="'
                    + " ".join(f"{X(d):.1f},{Y(v):.1f}" for d, v in zip(g.target_day, g.q50)) + '"/>')
         pe = g.dropna(subset=["persistence"])
@@ -219,7 +242,7 @@ def chart(g: pd.DataFrame, ymax: float, days: pd.DatetimeIndex) -> str:
                        + " ".join(f"{X(d):.1f},{Y(v):.1f}" for d, v in zip(pe.target_day, pe.persistence))
                        + '"/>')
         for _, r in g.iterrows():
-            tip = (f"{r.target_day:%d.%m.}: prognoza {r.q50:.0f} ({r.q10:.0f}–{r.q90:.0f}), "
+            tip = (f"{r.target_day:%d.%m.}: prognoza {r.q50:.0f} ({range_text(r)}), "
                    f"mjereno {f(r.truth, 0)}, perzistencija {f(r.persistence, 0)}")
             cx = f"{X(r.target_day):.1f}"
             out.append(f'<g class="hit"><title>{html.escape(tip)}</title>'
@@ -256,14 +279,15 @@ def recent_table(p: pd.DataFrame, pol: str, h: int) -> str:
         if r.status == "ok":
             _, emo_t, name_t = category(r.truth, pol)
             hit = (abs(r.q50 - r.truth) <= abs(r.persistence - r.truth))
-            inside = r.q10 <= r.truth <= r.q90
+            inside = ("–" if math.isnan(r.q10) or math.isnan(r.q90)
+                      else "da" if r.q10 <= r.truth <= r.q90 else "ne")
             res = (f"<td>{r.truth:.0f}</td><td>{r.persistence:.0f}</td>"
-                   f"<td>{'da' if inside else 'ne'}</td><td>{emo_t} {name_t}"
+                   f"<td>{inside}</td><td>{emo_t} {name_t}"
                    f"{'' if name == name_t else ' ✗'}</td><td>{'model' if hit else 'perzistencija'}</td>")
         else:
             res = f'<td colspan="5" class="muted">{r.status}</td>'
         rows.append(f"<tr><td>{r.target_day:%d.%m.}</td><td>{DISPLAY.get(r.station, r.station)}</td>"
-                    f"<td>{emo} {r.q50:.0f} ({r.q10:.0f}–{r.q90:.0f})</td>{res}</tr>")
+                    f"<td>{emo} {r.q50:.0f} ({range_text(r)})</td>{res}</tr>")
     return ("<table><thead><tr><th>Dan</th><th>Stanica</th><th>Prognoza</th><th>Mjereno</th>"
             "<th>Perzist.</th><th>U rasponu</th><th>Kategorija (mjereno)</th><th>Bliže</th>"
             "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>")
@@ -367,6 +391,7 @@ izdavanja, iz istih FHMZ mjerenja. To je ono što je bilo poznato kad je prognoz
 oko 80 % slučajeva.</li>
 <li><b>Kategorija</b>: <a href="{SCALE_SOURCE}">skala indeksa kvaliteta zraka FHMZ</a>. FHMZ je
 primjenjuje na satne vrijednosti; ovdje se primjenjuje na dnevni prosjek.</li>
+<li><b>Fallback</b>: kad model ili podaci zakažu, bot šalje perzistenciju bez raspona. Takve prognoze ulaze u MAE i kategoriju (to je bilo poslano), ali ne u pokrivenost raspona.</li>
 <li><b>Dan promjene</b>: dnevni prosjek se u odnosu na dan izdavanja pomjerio bar 10 µg/m³.</li>
 <li>Prognoze se commituju u repo u trenutku slanja (<a href="{REPO}/commits/main/data/predictions">historija
 </a>), pa se ne mogu naknadno popraviti. Svi parovi: <a href="parovi.csv">parovi.csv</a>.</li>
@@ -387,8 +412,8 @@ def main() -> int:
     p = pair(pred, obs, pd.Timestamp(now.date()))
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "index.html").write_text(render(p, now), encoding="utf-8")
-    cols = ["issue_day", "target_day", "horizon", "pollutant", "station", "q10", "q50", "q90",
-            "truth", "persistence", "status"]
+    cols = ["issue_day", "target_day", "horizon", "pollutant", "station", "model", "q10", "q50",
+            "q90", "truth", "persistence", "status"]
     p.reindex(columns=cols).sort_values(cols[:5]).to_csv(
         args.out / "parovi.csv", index=False, float_format="%.1f", date_format="%Y-%m-%d")
     ok = p[p.status == "ok"]
