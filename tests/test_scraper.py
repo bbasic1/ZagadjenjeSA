@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-from collect import FHMZ_BASE, HEADERS, STATIONS, parse_station_html
+from ingest.collect import FHMZ_BASE, HEADERS, STATIONS, parse_station_html
 
 HOURS = [f"{h}:00" for h in range(24)]
 

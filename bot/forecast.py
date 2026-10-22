@@ -12,7 +12,7 @@ prevodi na skalu svake FHMZ stanice (faktor iz zadnjih 14 dana mjerenja).
 Svaka prognoza se snima u data/predictions/YYYY-MM-DD.csv, da je kasnije
 uporedimo sa stvarnim mjerenjem (javna tačnost).
 
-python forecast.py --dry   samo ispiše poruku, ne šalje i ne snima
+python -m bot.forecast --dry   samo ispiše poruku, ne šalje i ne snima
 """
 
 import sys
@@ -23,14 +23,14 @@ import numpy as np
 import pandas as pd
 import requests
 
-from baseline import load_fhmz
-from categories import ADVICE_SENSITIVE, category
-from calibrate import WINDOW_DAYS, factor_for, station_factors
-from conformal import load_config as load_conformal, widen
-from collect import DATA, HEADERS, LOCAL_TZ, STATIONS
-from fetch_meteo_archive import VARIABLES, locations
-from send_telegram import check_config, send
-from train_v1 import HORIZONS, ISSUE_HOUR, MODELS, QUANTILES, attach_upper, build_dataset
+from model.baseline import load_fhmz
+from bot.categories import ADVICE_SENSITIVE, category
+from model.calibrate import WINDOW_DAYS, factor_for, station_factors
+from model.conformal import load_config as load_conformal, widen
+from ingest.collect import DATA, HEADERS, LOCAL_TZ, STATIONS
+from ingest.fetch_meteo_archive import VARIABLES, locations
+from bot.send_telegram import check_config, send
+from model.train_v1 import HORIZONS, ISSUE_HOUR, MODELS, QUANTILES, attach_upper, build_dataset
 
 # CAMS ćelije za koje imamo modele; stanice u istoj ćeliji dijele sirovu prognozu
 CELLS = ["bjelave", "hadzici", "ilidza", "ilijas", "ivan_sedlo", "otoka", "vogosca"]

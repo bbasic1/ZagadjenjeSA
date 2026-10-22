@@ -22,7 +22,7 @@ import requests
 from bs4 import BeautifulSoup
 
 LOCAL_TZ = ZoneInfo("Europe/Sarajevo")
-DATA = Path(__file__).parent / "data"
+DATA = Path(__file__).resolve().parents[1] / "data"
 HEADERS = {"User-Agent": "sarajevo-air-forecast (studentski projekat)"}
 FHMZ_BASE = "https://www.fhmzbih.gov.ba/latinica/ZRAK/"
 

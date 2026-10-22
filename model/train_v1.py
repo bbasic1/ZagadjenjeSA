@@ -20,17 +20,17 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
-from baseline import CHANGE_THRESHOLD, ISSUE_HOUR, MIN_HOURS, load_cams
-from collect import DATA, LOCAL_TZ
-from fetch_meteo_archive import UPPER
+from model.baseline import CHANGE_THRESHOLD, ISSUE_HOUR, MIN_HOURS, load_cams
+from ingest.collect import DATA, LOCAL_TZ
+from ingest.fetch_meteo_archive import UPPER
 
 QUANTILES = [0.1, 0.5, 0.9]
 HORIZONS = [1, 2]
 HEATING = [10, 11, 12, 1, 2, 3]
 # zime na kojima testiramo; trening je sve prije početka zime
 TEST_SEASONS = [("2024-10-01", "2025-04-01"), ("2025-10-01", "2026-04-01")]
-REPORT = Path(__file__).parent / "reports" / "model_v1.md"
-MODELS = Path(__file__).parent / "models"
+REPORT = Path(__file__).resolve().parents[1] / "reports" / "model_v1.md"
+MODELS = Path(__file__).resolve().parents[1] / "models"
 UPPER_POINT = UPPER[0]
 N_ROUNDS = 400
 PARAMS = dict(learning_rate=0.03, num_leaves=15, min_data_in_leaf=30,

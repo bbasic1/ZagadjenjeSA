@@ -1,11 +1,8 @@
 name: Meteo arhiva prognoza
 
 on:
-  workflow_dispatch:          # ručno ponovno povlačenje arhive
-  push:
-    paths:
-      - fetch_meteo_archive.py # promjena skripte = nova arhiva
-      - .github/workflows/meteo_archive.yml
+  # samo ručno: novo povlačenje troši Open-Meteo limit koji treba satnom prikupljanju
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -19,7 +16,7 @@ jobs:
         with:
           python-version: "3.15"
       - run: pip install -r requirements.txt
-      - run: python -u fetch_meteo_archive.py
+      - run: python -u -m ingest.fetch_meteo_archive
       - name: Sačuvaj arhivu u repo
         run: |
           git config user.name "air-bot"
