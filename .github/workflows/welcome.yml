@@ -1,0 +1,23 @@
+name: Dobrodošlica u kanalu
+
+on:
+  workflow_dispatch:          # ručno: Actions → Dobrodošlica u kanalu → Run workflow
+    inputs:
+      objavi:
+        description: "Objavi i zakači poruku u kanalu (inače samo ispiše)"
+        type: boolean
+        default: false
+
+jobs:
+  welcome:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15"
+      - run: pip install requests
+      - run: python -m bot.welcome ${{ inputs.objavi && '--post' || '' }}
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

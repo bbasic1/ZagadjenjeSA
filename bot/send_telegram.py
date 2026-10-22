@@ -36,13 +36,12 @@ def check_config() -> list[str]:
     return problems
 
 
-def send(text: str) -> None:
+def call(method: str, data: dict) -> dict:
+    """Pozovi Telegram Bot API metodu nad kanalom i vrati `result`."""
     token = os.environ["TELEGRAM_TOKEN"].strip()
     chat = os.environ["TELEGRAM_CHAT_ID"].strip()
-    r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                      data={"chat_id": chat, "text": text, "parse_mode": "HTML",
-                            "disable_web_page_preview": True},
-                      timeout=30)
+    r = requests.post(f"https://api.telegram.org/bot{token}/{method}",
+                      data={"chat_id": chat, **data}, timeout=30)
     body = r.json()
     if not body.get("ok"):
         # Telegram opis greške ne sadrži token, pa ga je sigurno ispisati
@@ -54,7 +53,16 @@ def send(text: str) -> None:
             hint = " (dodaj bota u kanal kao administratora s pravom objavljivanja)"
         elif r.status_code == 401:
             hint = " (token nije ispravan)"
-        raise RuntimeError(f"Telegram: {r.status_code} {desc}{hint}")
+        raise RuntimeError(f"Telegram {method}: {r.status_code} {desc}{hint}")
+    return body["result"]
+
+
+def send(text: str, silent: bool = False) -> int:
+    """Pošalji HTML poruku u kanal i vrati njen message_id."""
+    result = call("sendMessage", {"text": text, "parse_mode": "HTML",
+                                  "disable_web_page_preview": True,
+                                  "disable_notification": silent})
+    return result["message_id"]
 
 
 def main() -> int:
