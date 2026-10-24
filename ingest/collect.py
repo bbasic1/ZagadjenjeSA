@@ -13,6 +13,7 @@ Sva vremena se čuvaju u UTC.
 """
 
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -102,14 +103,36 @@ def parse_station_html(html: str) -> list[dict]:
     return out
 
 
+EMPTY_RETRIES = (20, 60)  # sekunde čekanja; FHMZ noću ponekad vrati stranicu bez tabela
+
+
+def fetch_station(code: str, page: str) -> list[dict]:
+    """Stranica jedne stanice; ako nema nijedne vrijednosti, pokuša ponovo.
+
+    Kad i ponovni pokušaji vrate praznu stranicu, u log ide kratak opis
+    odgovora (status, veličina, naslov), da se vidi šta je FHMZ poslao.
+    """
+    for wait in (0, *EMPTY_RETRIES):
+        if wait:
+            time.sleep(wait)
+        r = requests.get(FHMZ_BASE + page, headers=HEADERS, timeout=30)
+        r.raise_for_status()
+        r.encoding = "utf-8"
+        rows = parse_station_html(r.text)
+        if rows:
+            return rows
+    soup = BeautifulSoup(r.text, "lxml")
+    title = soup.title.get_text(strip=True) if soup.title else "-"
+    print(f"  ! {code}: prazna stranica i poslije {len(EMPTY_RETRIES)} ponovna pokušaja "
+          f"(HTTP {r.status_code}, {len(r.text)} B, {len(soup.find_all('table'))} tabela, naslov: {title!r})")
+    return []
+
+
 def collect_fhmz(fetched_at: str) -> pd.DataFrame:
     frames = []
     for code, (page, _, _) in STATIONS.items():
         try:
-            r = requests.get(FHMZ_BASE + page, headers=HEADERS, timeout=30)
-            r.raise_for_status()
-            r.encoding = "utf-8"
-            rows = parse_station_html(r.text)
+            rows = fetch_station(code, page)
         except Exception as e:  # jedna stanica ne smije srušiti ostale
             print(f"  ! {code}: {e}")
             continue
