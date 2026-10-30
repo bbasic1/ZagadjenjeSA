@@ -76,7 +76,7 @@ Pokretanje lokalno: `pip install -r requirements.txt && python -m ingest.collect
 - FHMZ podaci imaju rupe (18. i 19.10.2026 fale za sve stanice; Hadžići skoro ne šalju od 17.10.). Nedostajuće vrijednosti rješavaj eksplicitno, nikad tiho.
 - `issued_utc` u snimcima prognoze je vrijeme preuzimanja, ne inicijalizacije modela. Snimak počinje od 00 UTC tekućeg dana, pa sati prije `issued_utc` nisu prava prognoza.
 - Open-Meteo besplatni limit broji lokacije × dane × varijable/10: sve varijable šalji u jednom zahtjevu, inače satni limit koči satima.
-- Claude cloud okruženje nema pristup Open-Meteo; podaci se vuku kroz GitHub Actions.
+- Cloud razvojno okruženje nema pristup Open-Meteo; podaci se vuku kroz GitHub Actions.
 - Ne arhiviraj WAQI/aqicn podatke (licenca zabranjuje). Open-Meteo je CC BY 4.0, uz atribuciju.
 
 ## Rad na kodu
