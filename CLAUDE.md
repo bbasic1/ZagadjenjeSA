@@ -24,6 +24,7 @@ Ako primijetiš kod koji krši ovo, zaustavi se i reci to prije nego nastaviš.
 - **Baselineovi:** perzistencija (glavni), klimatologija, sirovi CAMS.
 - **Metrike:** MAE (µg/m³), skill prema perzistenciji, MAE na danima promjene (pomak ≥10 µg/m³), tačnost kategorije, pokrivenost intervala 0.1–0.9 (cilj 80 %).
 - **Rezultat v1** (`reports/model_v1.md`, cilj CAMS): PM10 D+1 MAE 8.3 naspram 11.9 za perzistenciju, D+2 9.2 naspram 13.8; pokrivenost sirovog intervala ~65 %, preuzak; zato se širi CQR korekcijom (`model/conformal.py`, `reports/conformal.md`): na zimi 2025/26, uz korekciju iz 2024/25, pokrivenost je 81–84 %. Korekcija se računa samo iz prethodne zime i samo širi raspon. Na stanicama treba ponovo provjeriti kad se skupe parovi.
+- **Dan i veče (30.10.2026):** zimi je veče ~1,6× dnevni prosjek, pa poseban model za dan i veče pogađa kategoriju večeri 72 % naspram 43 % za dnevnu prognozu (`reports/model_dan_vece.md`). Kalibracija ide po dijelu dana (CAMS veče precjenjuje, dan potcjenjuje). Zasad se samo tiho snima; u poruku ide tek kad se ~2 sedmice potvrdi na stanicama (odluka Bakira).
 - **Fallback:** ako model ili podaci zakažu, šalje se perzistencija.
 - Kategorije u poruci prate skalu indeksa kvaliteta zraka FHMZ (`bot/categories.py`, PM10: odličan ≤15, dobar ≤45, umjeren ≤120, zagađen ≤195, vrlo zagađen ≤270). FHMZ je primjenjuje na satne vrijednosti, mi na dnevni prosjek. Poruka uvijek nosi ogradu da bot nije zvaničan izvor.
 
@@ -36,15 +37,18 @@ Ako primijetiš kod koji krši ovo, zaustavi se i reci to prije nego nastaviš.
 | `ingest/fetch_meteo_archive.py` | Arhiva meteo prognoza (Previous Runs, 2023–danas) → `data/meteo/previous_runs.csv.gz` |
 | `model/baseline.py` | Greška perzistencije i sirovog CAMS-a → `reports/baseline.md` |
 | `model/train_v1.py` | Validacija modela → `reports/model_v1.md`; `--final` snima modele u `models/` |
+| `model/train_parts.py` | PM10 posebno za dan (07–17) i veče (18–24) → `reports/model_dan_vece.md`; `--final` snima `models/pm10_{dan,vece}_*` |
 | `model/calibrate.py` | Faktor po stanici iz zadnjih 14 dana FHMZ mjerenja (CAMS → stanica) |
 | `model/conformal.py` | CQR korekcija raspona 10–90 % → `reports/conformal.md`; `--final` snima `models/conformal.json` |
 | `bot/forecast.py` | Večernja prognoza, poruka u Telegram, snimak u `data/predictions/` (`--dry` samo ispiše) |
 | `dashboard/dashboard.py` | Javni dashboard tačnosti: `data/predictions` naspram FHMZ → `site/` (GitHub Pages, ne commituje se) |
+| `bot/parts.py` | Tiha prognoza za dan i veče uz večernju poruku (ne šalje se) → `data/predictions_dan_vece/` |
 | `bot/categories.py` | Skala kategorija indeksa kvaliteta zraka FHMZ (PM10, PM2.5) |
 | `bot/send_telegram.py` | Slanje u kanal; `--test` šalje probnu poruku |
 | `data/fhmz/YYYY-MM.csv` | Satna mjerenja, long: `station,pollutant,time_utc,value,fetched_at`, bez duplikata |
 | `data/forecast/YYYY-MM-DD_00\|12.csv` | Snimci prognoze dvaput dnevno: `issued_utc,station,valid_utc,` meteo, `cams_pm10,cams_pm2_5` |
 | `data/predictions/YYYY-MM-DD.csv` | Svaka poslana prognoza, za praćenje tačnosti |
+| `data/predictions_dan_vece/YYYY-MM-DD.csv` | Tiha prognoza za dan i veče (od 30.10.2026), za provjeru prije uključenja u poruku |
 
 GitHub Actions (`.github/workflows/`):
 
