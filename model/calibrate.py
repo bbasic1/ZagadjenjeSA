@@ -20,12 +20,19 @@ CLIP = (0.4, 2.5)
 
 
 def station_factors(fhmz: pd.DataFrame, cams: pd.DataFrame, pollutant: str,
-                    cams_col: str, cutoff: pd.Timestamp) -> pd.DataFrame:
-    """Faktor po stanici iz satnih parova (mjerenje, CAMS) prije cutoff-a."""
+                    cams_col: str, cutoff: pd.Timestamp,
+                    hours: range | None = None) -> pd.DataFrame:
+    """Faktor po stanici iz satnih parova (mjerenje, CAMS) prije cutoff-a.
+
+    hours ograniči parove na sate dijela dana (npr. 18–23 za veče), jer CAMS
+    ima jači dnevni ciklus od stanica: veče precjenjuje, dan potcjenjuje.
+    """
     start = cutoff - pd.Timedelta(days=WINDOW_DAYS)
     obs = fhmz[(fhmz.time > start) & (fhmz.time <= cutoff)][["station", "time", pollutant]]
     mod = cams[(cams.time > start) & (cams.time <= cutoff)][["station", "time", cams_col]]
     pairs = obs.merge(mod, on=["station", "time"]).dropna()
+    if hours is not None:
+        pairs = pairs[pairs.time.dt.hour.isin(hours)]
     g = pairs.groupby("station")
     raw = pd.DataFrame({"n_sati": g.size(),
                         "faktor_sirovi": g[pollutant].sum() / g[cams_col].sum()})

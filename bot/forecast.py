@@ -29,6 +29,7 @@ from model.calibrate import WINDOW_DAYS, factor_for, station_factors
 from model.conformal import load_config as load_conformal, widen
 from ingest.collect import DATA, HEADERS, LOCAL_TZ, STATIONS
 from ingest.fetch_meteo_archive import VARIABLES, locations
+from bot import parts
 from bot.send_telegram import check_config, send
 from model.train_v1 import HORIZONS, ISSUE_HOUR, MODELS, QUANTILES, attach_upper, build_dataset
 
@@ -239,13 +240,25 @@ def main() -> int:
         pred, failed = persistence(today, cutoff), True
     text = message(pred)
     print(text)
+    # tiha prognoza za dan i veče: ne ide u poruku, samo se snima za provjeru
+    shadow = None
+    if not failed:
+        try:
+            shadow = parts.predict_parts(cams, met, today, cutoff, CELLS, CELL_OF, list(DISPLAY))
+            print("\n" + parts.preview(shadow, DISPLAY))
+        except Exception as e:  # noqa: BLE001 - poruka ide i bez probne prognoze, run ipak pada
+            print(f"GREŠKA: probna prognoza za dan i veče nije uspjela ({e!r})")
+            failed = True
     if dry:
         return 1 if failed else 0
     send(text)
+    issued = now.strftime("%Y-%m-%d %H:%M")
     path.parent.mkdir(parents=True, exist_ok=True)
-    pred.assign(issued_local=now.strftime("%Y-%m-%d %H:%M")).to_csv(path, index=False, float_format="%.1f")
+    pred.assign(issued_local=issued).to_csv(path, index=False, float_format="%.1f")
     print(f"Poslano i snimljeno -> {path}")
-    return 1 if failed else 0  # crven run, da se kvar modela vidi
+    if shadow is not None:
+        parts.save(shadow, today, issued)
+    return 1 if failed else 0  # crven run, da se kvar modela ili probne prognoze vidi
 
 
 if __name__ == "__main__":
