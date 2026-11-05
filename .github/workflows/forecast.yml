@@ -29,8 +29,8 @@ jobs:
   forecast:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.15"
       - run: pip install -r requirements.txt
@@ -46,5 +46,9 @@ jobs:
           git add data/predictions/
           if [ -d data/predictions_dan_vece ]; then git add data/predictions_dan_vece/; fi
           git commit -m "prognoza $(date -u +'%Y-%m-%d')" || exit 0
-          git pull --rebase
-          git push
+          for i in 1 2 3; do
+            git pull --rebase && git push && exit 0
+            git rebase --abort || true
+            sleep 15
+          done
+          exit 1
