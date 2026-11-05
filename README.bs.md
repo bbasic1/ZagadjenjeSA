@@ -6,6 +6,8 @@
 
 Prognoza zagađenja zraka u Sarajevu za sutra (D+1) i prekosutra (D+2), po mjernoj stanici. Svako veče poslije 18:00 Telegram bot **ZagađenkoBot** objavi prognozu u kanalu, a javni dashboard prati koliko su prognoze bile tačne:
 
+**Telegram kanal:** https://t.me/zraksarajevo
+
 **Dashboard tačnosti:** https://bbasic1.github.io/ZagadjenjeSA/
 
 [![Dashboard tačnosti](docs/dashboard.png)](https://bbasic1.github.io/ZagadjenjeSA/)

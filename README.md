@@ -6,6 +6,8 @@
 
 Air pollution forecasts for Sarajevo, Bosnia and Herzegovina, for tomorrow (D+1) and the day after (D+2), per monitoring station. Every evening after 18:00 local time the Telegram bot **ZagađenkoBot** posts the forecast to a public channel, and a public dashboard tracks how accurate past forecasts were:
 
+**Telegram channel:** https://t.me/zraksarajevo
+
 **Accuracy dashboard:** https://bbasic1.github.io/ZagadjenjeSA/
 
 [![Accuracy dashboard](docs/dashboard.png)](https://bbasic1.github.io/ZagadjenjeSA/)
