@@ -1,10 +1,14 @@
 # ZagadjenjeSA
 
+[![Testovi](https://github.com/bbasic1/ZagadjenjeSA/actions/workflows/tests.yml/badge.svg)](https://github.com/bbasic1/ZagadjenjeSA/actions/workflows/tests.yml) [![Prikupljanje podataka](https://github.com/bbasic1/ZagadjenjeSA/actions/workflows/collect.yml/badge.svg)](https://github.com/bbasic1/ZagadjenjeSA/actions/workflows/collect.yml) [![Licenca: MIT](https://img.shields.io/badge/Licenca-MIT-blue.svg)](LICENSE)
+
 [English](README.md) · **Bosanski**
 
 Prognoza zagađenja zraka u Sarajevu za sutra (D+1) i prekosutra (D+2), po mjernoj stanici. Svako veče poslije 18:00 Telegram bot **ZagađenkoBot** objavi prognozu u kanalu, a javni dashboard prati koliko su prognoze bile tačne:
 
 **Dashboard tačnosti:** https://bbasic1.github.io/ZagadjenjeSA/
+
+[![Dashboard tačnosti](docs/dashboard.png)](https://bbasic1.github.io/ZagadjenjeSA/)
 
 > **Ograda.** Ovo je eksperimentalni, nezavisni projekat. Nije zvanični izvor informacija o kvalitetu zraka. Zvanični podaci su na stranici [Federalnog hidrometeorološkog zavoda (FHMZ)](https://www.fhmzbih.gov.ba/).
 
@@ -49,7 +53,7 @@ Sva vremena u fajlovima su UTC.
 
 ## Pokretanje lokalno
 
-Potreban je Python 3. Skripte se pokreću kao moduli iz root foldera repoa (`python -m folder.skripta`).
+Potreban je Python 3.15 (verzija koju koristi CI). Skripte se pokreću kao moduli iz root foldera repoa (`python -m folder.skripta`).
 
 ```bash
 pip install -r requirements.txt
@@ -67,3 +71,7 @@ Slanje u Telegram traži varijable okruženja `TELEGRAM_TOKEN` i `TELEGRAM_CHAT_
 
 - Mjerenja: [FHMZ BiH](https://www.fhmzbih.gov.ba/)
 - Meteo prognoze i CAMS: [Open-Meteo](https://open-meteo.com/) (CC BY 4.0), CAMS je servis programa Copernicus
+
+## Licenca
+
+Kod je objavljen pod [MIT licencom](LICENSE). Licenca ne pokriva podatke trećih strana: FHMZ mjerenja te Open-Meteo i CAMS podaci ostaju pod uslovima svojih izvora.

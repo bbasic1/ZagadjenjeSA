@@ -1,10 +1,14 @@
 # ZagadjenjeSA
 
+[![Tests](https://github.com/bbasic1/ZagadjenjeSA/actions/workflows/tests.yml/badge.svg)](https://github.com/bbasic1/ZagadjenjeSA/actions/workflows/tests.yml) [![Data collection](https://github.com/bbasic1/ZagadjenjeSA/actions/workflows/collect.yml/badge.svg)](https://github.com/bbasic1/ZagadjenjeSA/actions/workflows/collect.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **English** · [Bosanski](README.bs.md)
 
 Air pollution forecasts for Sarajevo, Bosnia and Herzegovina, for tomorrow (D+1) and the day after (D+2), per monitoring station. Every evening after 18:00 local time the Telegram bot **ZagađenkoBot** posts the forecast to a public channel, and a public dashboard tracks how accurate past forecasts were:
 
 **Accuracy dashboard:** https://bbasic1.github.io/ZagadjenjeSA/
+
+[![Accuracy dashboard](docs/dashboard.png)](https://bbasic1.github.io/ZagadjenjeSA/)
 
 > **Disclaimer.** This is an experimental, independent project and not an official source of air quality information. Official data is published by the [Federal Hydrometeorological Institute (FHMZ)](https://www.fhmzbih.gov.ba/).
 
@@ -49,7 +53,7 @@ All times in data files are UTC.
 
 ## Running locally
 
-Requires Python 3. Scripts run as modules from the repository root (`python -m folder.script`).
+Requires Python 3.15 (the version CI uses). Scripts run as modules from the repository root (`python -m folder.script`).
 
 ```bash
 pip install -r requirements.txt
@@ -67,3 +71,7 @@ Sending to Telegram needs the `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID` environmen
 
 - Measurements: [FHMZ BiH](https://www.fhmzbih.gov.ba/)
 - Weather forecasts and CAMS: [Open-Meteo](https://open-meteo.com/) (CC BY 4.0); CAMS is a Copernicus service
+
+## License
+
+The code is released under the [MIT License](LICENSE). The license does not cover third-party data: FHMZ measurements and Open-Meteo and CAMS data stay under the terms of their sources.
