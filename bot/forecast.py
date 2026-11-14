@@ -16,6 +16,7 @@ python -m bot.forecast --dry   samo ispiše poruku, ne šalje i ne snima
 """
 
 import sys
+import time
 from datetime import datetime
 
 import lightgbm as lgb
@@ -44,6 +45,8 @@ DISPLAY = {
 POLLUTANTS = [("pm10", "cams_pm10", "PM10"), ("pm2_5", "cams_pm2_5", "PM2_5")]
 DAYS = ["ponedjeljak", "utorak", "srijeda", "četvrtak", "petak", "subota", "nedjelja"]
 DAYS_ACC = ["ponedjeljak", "utorak", "srijedu", "četvrtak", "petak", "subotu", "nedjelju"]
+FETCH_ATTEMPTS = 3  # Open-Meteo ponekad ne odgovori u roku (13.11.2026 pala prognoza)
+FETCH_WAIT = 30     # sekundi između pokušaja
 TREND_UG = 5  # promjena medijana stanica (µg/m³) koju vrijedi spomenuti u uvodu
 
 
@@ -56,8 +59,16 @@ def fetch(url: str, variables: list[str], past_days: int, forecast_days: int,
         "hourly": ",".join(variables), "past_days": past_days,
         "forecast_days": forecast_days, "timezone": "GMT",
     }
-    r = requests.get(url, params=params, headers=HEADERS, timeout=60)
-    r.raise_for_status()
+    for attempt in range(FETCH_ATTEMPTS):
+        try:
+            r = requests.get(url, params=params, headers=HEADERS, timeout=60)
+            r.raise_for_status()
+            break
+        except requests.RequestException as e:
+            if attempt == FETCH_ATTEMPTS - 1:
+                raise
+            print(f"UPOZORENJE: Open-Meteo nije odgovorio ({e!r}), pokušavam ponovo za {FETCH_WAIT} s")
+            time.sleep(FETCH_WAIT)
     data = r.json()
     data = [data] if isinstance(data, dict) else data
     frames = [pd.DataFrame(loc["hourly"]).assign(station=code)
