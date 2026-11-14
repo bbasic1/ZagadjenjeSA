@@ -25,6 +25,7 @@ Ako primijetiš kod koji krši ovo, zaustavi se i reci to prije nego nastaviš.
 - **Metrike:** MAE (µg/m³), skill prema perzistenciji, MAE na danima promjene (pomak ≥10 µg/m³), tačnost kategorije, pokrivenost intervala 0.1–0.9 (cilj 80 %).
 - **Rezultat v1** (`reports/model_v1.md`, cilj CAMS): PM10 D+1 MAE 8.3 naspram 11.9 za perzistenciju, D+2 9.2 naspram 13.8; pokrivenost sirovog intervala ~65 %, preuzak; zato se širi CQR korekcijom (`model/conformal.py`, `reports/conformal.md`): na zimi 2025/26, uz korekciju iz 2024/25, pokrivenost je 81–84 %. Korekcija se računa samo iz prethodne zime i samo širi raspon. Na stanicama treba ponovo provjeriti kad se skupe parovi.
 - **Dan i veče (30.10.2026):** zimi je veče ~1,6× dnevni prosjek, pa poseban model za dan i veče pogađa kategoriju večeri 72 % naspram 43 % za dnevnu prognozu (`reports/model_dan_vece.md`). Kalibracija ide po dijelu dana (CAMS veče precjenjuje, dan potcjenjuje). Zasad se samo tiho snima; u poruku ide tek kad se ~2 sedmice potvrdi na stanicama (odluka Bakira).
+- **Mješavina sa stanicama (od 15.11.2026, odluka Bakira):** u prvom smogu (8.–11.11.) model je predviđao ~30, izmjereno 66–76, jer su lagovi CAMS, ne stanice. Poslana prognoza je zato 0,5 · model + 0,5 · FHMZ prosjek zadnja 24 h do 17:00, a raspon 10–90 % i mali pomak medijana dolaze iz log-grešaka mješavine na poslanim prognozama zadnjih 28 dana (`model/blend.py`). Medijan modela ostaje u koloni `q50_model`, perzistencija u `perz_fhmz`, `model` = `lightgbm+fhmz`. Težina 0,5 je izabrana na 30.10.–13.11. (sezona uživo), pa je pošten test od 15.11. Na stanicama dan/veče model nije bio bolji od dnevne prognoze (`/mnt/project-files/izvjestaji/dan-vece-2026-11-14.md`); i dalje se samo tiho snima.
 - **Fallback:** ako model ili podaci zakažu, šalje se perzistencija.
 - Kategorije u poruci prate skalu indeksa kvaliteta zraka FHMZ (`bot/categories.py`, PM10: odličan ≤15, dobar ≤45, umjeren ≤120, zagađen ≤195, vrlo zagađen ≤270). FHMZ je primjenjuje na satne vrijednosti, mi na dnevni prosjek. Poruka uvijek nosi ogradu da bot nije zvaničan izvor.
 
@@ -38,6 +39,7 @@ Ako primijetiš kod koji krši ovo, zaustavi se i reci to prije nego nastaviš.
 | `model/baseline.py` | Greška perzistencije i sirovog CAMS-a → `reports/baseline.md` |
 | `model/train_v1.py` | Validacija modela → `reports/model_v1.md`; `--final` snima modele u `models/` |
 | `model/train_parts.py` | PM10 posebno za dan (07–17) i veče (18–24) → `reports/model_dan_vece.md`; `--final` snima `models/pm10_{dan,vece}_*` |
+| `model/blend.py` | Poslana prognoza = pola model, pola FHMZ prosjek zadnja 24 h; raspon iz grešaka zadnjih 28 dana |
 | `model/calibrate.py` | Faktor po stanici iz zadnjih 14 dana FHMZ mjerenja (CAMS → stanica) |
 | `model/conformal.py` | CQR korekcija raspona 10–90 % → `reports/conformal.md`; `--final` snima `models/conformal.json` |
 | `bot/forecast.py` | Večernja prognoza, poruka u Telegram, snimak u `data/predictions/` (`--dry` samo ispiše) |
