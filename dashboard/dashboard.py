@@ -137,7 +137,7 @@ def score(g: pd.DataFrame, rng: np.random.Generator) -> dict:
         "mae_m": em.mean(), "mae_p": ep.mean(),
         "skill": 100 * (1 - em.sum() / ep.sum()) if ep.sum() > 0 else math.nan,
         "skill_ci": skill_ci(g, rng),
-        "n_fallback": int((g.model != "lightgbm").sum()), "n_raspon": len(rg),
+        "n_fallback": int((g.model == "perzistencija").sum()), "n_raspon": len(rg),
         "pokr": 100 * inside.mean() if len(rg) else math.nan,
         "pokr_ci": wilson(int(inside.sum()), len(rg)),
         "kat_m": 100 * cat_hits(g.q50, g.truth, g.pollutant).mean(),
