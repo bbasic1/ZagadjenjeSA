@@ -2,7 +2,7 @@
 Prikupljanje podataka za prognozu zagađenja zraka u Sarajevu.
 
 Svako pokretanje radi dvije stvari:
-  1. FHMZ mjerenja: stranice stanica daju satne vrijednosti za zadnjih ~7 dana.
+  1. FHMZ mjerenja: portal zrak.fhmzbih.gov.ba daje satne vrijednosti za zadnjih ~7 dana.
      Spajaju se u mjesečne fajlove data/fhmz/YYYY-MM.csv (bez duplikata),
      pa propušteno pokretanje ništa ne kvari.
   2. Open-Meteo prognoze (meteo + CAMS): snimak se čuva dvaput dnevno
@@ -12,6 +12,7 @@ Svako pokretanje radi dvije stvari:
 Sva vremena se čuvaju u UTC.
 """
 
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -20,24 +21,36 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup
 
 LOCAL_TZ = ZoneInfo("Europe/Sarajevo")
 DATA = Path(__file__).resolve().parents[1] / "data"
 HEADERS = {"User-Agent": "sarajevo-air-forecast (studentski projekat)"}
-FHMZ_BASE = "https://www.fhmzbih.gov.ba/latinica/ZRAK/"
+# Od 26.11.2026. FHMZ podatke objavljuje samo na portalu zrak.fhmzbih.gov.ba
+# (stare stranice amsXxx.php vraćaju 404). Ovo je JSON iza izvještaja
+# "Sedmodnevni pregled": satne vrijednosti jednog polutanta za odabrane
+# stanice, zadnjih ~7 dana. Uslovi: navesti izvor (FHMZ), najviše 1 zahtjev / 0,5 s.
+FHMZ_API = "https://zrak.fhmzbih.gov.ba/rest/pubrep/data/last_week/{pid}"
+REQUEST_GAP = 0.6   # sekunde između zahtjeva
+STALE_HOURS = 12    # starije od ovoga znači da FHMZ ne osvježava podatke
+EMPTY_RETRIES = (20,)  # sekunde čekanja prije ponovnog pokušaja
 
-# kod stanice: (stranica na FHMZ, lat, lon) — koordinate su približne
+# id polutanta na portalu -> naziv u našim CSV fajlovima (isti kao ranije)
+POLLUTANTS = {
+    287: "PM10", 379: "PM2_5", 1: "SO2", 657: "NO2", 148: "NO",
+    662: "NOX", 499: "O3", 2: "CO", 21: "H2S",
+}
+
+# kod stanice: (id stanice na portalu, lat, lon) — koordinate su približne
 STATIONS = {
-    "vijecnica":  ("amsVijecnica.php", 43.8590, 18.4340),
-    "bjelave":    ("amsBjelave.php",   43.8670, 18.4230),
-    "otoka":      ("amsOtoka.php",     43.8480, 18.3620),
-    "saraj_polje":("amsSPolje.php",    43.8440, 18.3410),
-    "ilidza":     ("amsIlidza.php",    43.8300, 18.3100),
-    "vogosca":    ("amsVogosca.php",   43.9030, 18.3440),
-    "hadzici":    ("amsHadzici.php",   43.8220, 18.2010),
-    "ilijas":     ("amsIlijas.php",    43.9510, 18.2710),
-    "ivan_sedlo": ("amsISedlo.php",    43.7560, 18.0350),  # planinska, iznad kotline
+    "vijecnica":  (17, 43.8590, 18.4340),
+    "bjelave":    (3,  43.8670, 18.4230),
+    "otoka":      (12, 43.8480, 18.3620),
+    "saraj_polje":(34, 43.8440, 18.3410),
+    "ilidza":     (13, 43.8300, 18.3100),
+    "vogosca":    (27, 43.9030, 18.3440),
+    "hadzici":    (26, 43.8220, 18.2010),
+    "ilijas":     (18, 43.9510, 18.2710),
+    "ivan_sedlo": (1,  43.7560, 18.0350),  # planinska, iznad kotline
 }
 
 METEO_VARS = [
@@ -50,104 +63,96 @@ CAMS_VARS = ["pm10", "pm2_5"]
 
 # ---------------------------------------------------------------- FHMZ
 
-def parse_station_html(html: str) -> list[dict]:
-    """Iz HTML-a stranice stanice izvuče redove (polutant, vrijeme_utc, vrijednost)."""
-    soup = BeautifulSoup(html, "lxml")
-    out = []
-    last_dates: list[str] = []
+def parse_portal_json(items: list, ids: dict[int, str], pollutant: str) -> tuple[list[dict], int]:
+    """Iz odgovora portala izvuče redove (stanica, polutant, vrijeme_utc, vrijednost).
 
-    for table in soup.find_all("table"):
-        rows = [[c.get_text(strip=True) for c in tr.find_all(["td", "th"])]
-                for tr in table.find_all("tr")]
-        # tražimo red zaglavlja koji počinje s "datum" (ili prazan pa satima)
-        header_idx = next((i for i, r in enumerate(rows)
-                           if len(r) >= 25 and r[1] == "0:00"), None)
-        if header_idx is None:
-            continue
-
-        pollutant = rows[header_idx][0] if rows[header_idx][0].lower() != "datum" else ""
-        if not pollutant and header_idx > 0 and rows[header_idx - 1]:
-            pollutant = rows[header_idx - 1][0]
-        if not pollutant:
-            continue
-        hours = [int(h.split(":")[0]) for h in rows[header_idx][1:25]]
-
-        dates_here = []
-        for k, r in enumerate(rows[header_idx + 1:]):
-            if len(r) < 25:
-                continue
-            date_str = r[0].rstrip(".")
-            if not date_str and k < len(last_dates):  # neke tabele (NOx) nemaju datume
-                date_str = last_dates[k]
-            try:
-                day = datetime.strptime(date_str, "%d.%m.%Y")
-            except ValueError:
-                continue
-            dates_here.append(date_str)
-            for h, cell in zip(hours, r[1:25]):
-                cell = cell.replace(",", ".")
-                if not cell or cell == "#":
-                    continue
-                try:
-                    value = float(cell)
-                except ValueError:
-                    continue
-                local = day.replace(hour=h, tzinfo=LOCAL_TZ)
-                out.append({
-                    "pollutant": pollutant.upper().replace("PM2.5", "PM2_5"),
-                    "time_utc": local.astimezone(timezone.utc).strftime("%Y-%m-%d %H:00"),
-                    "value": value,
-                })
-        if dates_here:
-            last_dates = dates_here
-    return out
-
-
-EMPTY_RETRIES = (20, 60)  # sekunde čekanja; FHMZ noću ponekad vrati stranicu bez tabela
-
-
-def fetch_station(code: str, page: str) -> list[dict]:
-    """Stranica jedne stanice; ako nema nijedne vrijednosti, pokuša ponovo.
-
-    Kad i ponovni pokušaji vrate praznu stranicu, u log ide kratak opis
-    odgovora (status, veličina, naslov), da se vidi šta je FHMZ poslao.
+    Portal daje `date` u lokalnom vremenu (Europe/Sarajevo), bez oznake zone,
+    i to kao kraj sata, isto kao stara stranica (sat "23:00" lokalno = 22:00 UTC
+    zimi). Prazne vrijednosti (null) se preskaču i broje, nikad ne postaju nula.
+    Vraća (redovi, broj praznih).
     """
+    out, missing = [], 0
+    for it in items:
+        code = ids.get(it.get("id"))
+        if code is None:
+            continue  # stanica koju ne pratimo
+        if it.get("value") is None:
+            missing += 1
+            continue
+        local = datetime.fromisoformat(it["date"]).replace(tzinfo=LOCAL_TZ)
+        out.append({
+            "station": code,
+            "pollutant": pollutant,
+            "time_utc": local.astimezone(timezone.utc).strftime("%Y-%m-%d %H:00"),
+            "value": round(float(it["value"]), 2),  # kao na starim stranicama
+        })
+    return out, missing
+
+
+def fetch_pollutant(pid: int) -> list:
+    """Zadnjih ~7 dana satnih vrijednosti jednog polutanta za sve naše stanice.
+
+    Ako odgovor nije JSON lista (npr. stranica "One moment, please..."), pokuša
+    još jednom, pa u grešci opiše šta je portal poslao.
+    """
+    params = [("stations", s[0]) for s in STATIONS.values()]
     for wait in (0, *EMPTY_RETRIES):
         if wait:
             time.sleep(wait)
-        r = requests.get(FHMZ_BASE + page, headers=HEADERS, timeout=30)
+        r = requests.get(FHMZ_API.format(pid=pid), params=params, headers=HEADERS, timeout=30)
         r.raise_for_status()
-        r.encoding = "utf-8"
-        rows = parse_station_html(r.text)
-        if rows:
-            return rows
-    soup = BeautifulSoup(r.text, "lxml")
-    title = soup.title.get_text(strip=True) if soup.title else "-"
-    print(f"  ! {code}: prazna stranica i poslije {len(EMPTY_RETRIES)} ponovna pokušaja "
-          f"(HTTP {r.status_code}, {len(r.text)} B, {len(soup.find_all('table'))} tabela, naslov: {title!r})")
-    return []
+        try:
+            data = r.json()
+        except ValueError:
+            continue
+        if isinstance(data, list):
+            return data
+    title = re.search(r"<title>([^<]*)", r.text)
+    raise RuntimeError(f"odgovor nije JSON lista (HTTP {r.status_code}, {len(r.text)} B, "
+                       f"naslov: {title.group(1).strip() if title else '-'!r})")
 
 
 def collect_fhmz(fetched_at: str) -> pd.DataFrame:
-    frames = []
-    for code, (page, _, _) in STATIONS.items():
+    ids = {s[0]: code for code, s in STATIONS.items()}
+    rows = []
+    for i, (pid, pollutant) in enumerate(POLLUTANTS.items()):
+        if i:
+            time.sleep(REQUEST_GAP)  # uslovi portala: najviše jedan zahtjev u pola sekunde
         try:
-            rows = fetch_station(code, page)
-        except Exception as e:  # jedna stanica ne smije srušiti ostale
-            print(f"  ! {code}: {e}")
+            got, missing = parse_portal_json(fetch_pollutant(pid), ids, pollutant)
+        except Exception as e:  # jedan polutant ne smije srušiti ostale
+            print(f"  ! {pollutant}: {e}")
             continue
-        df = pd.DataFrame(rows)
-        if df.empty:
-            print(f"  ! {code}: nema vrijednosti (stanica možda ne radi)")
-            continue
-        df["station"] = code
-        df["fetched_at"] = fetched_at
-        frames.append(df)
-        pm = df[df.pollutant == "PM2_5"]
-        last = pm.sort_values("time_utc").iloc[-1] if not pm.empty else None
-        info = f"zadnji PM2.5 {last.value} u {last.time_utc} UTC" if last is not None else "bez PM2.5"
-        print(f"  {code:12s} {len(df):5d} vrijednosti, {info}")
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        print(f"  {pollutant:6s} {len(got):5d} vrijednosti, {missing} praznih")
+        rows += got
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    df["fetched_at"] = fetched_at
+    for code in STATIONS:
+        pm = df[(df.station == code) & (df.pollutant == "PM10")]
+        if pm.empty:
+            print(f"  ! {code}: nema PM10 (stanica možda ne radi)")
+        else:
+            print(f"  {code:12s} zadnji PM10 {pm.time_utc.max()} UTC")
+    return df
+
+
+def is_stale(obs: pd.DataFrame, now: datetime) -> bool:
+    """True ako je najnovije PM10 mjerenje (bilo koje stanice) starije od STALE_HOURS.
+
+    Stara stranica je 22.11.2026. prestala da se osvježava, a prikupljanje je
+    danima "uspijevalo" bez novih podataka. Ovo to čini vidljivim.
+    """
+    pm = obs[obs.pollutant == "PM10"] if not obs.empty else obs
+    if pm.empty:
+        return True
+    newest = datetime.strptime(pm.time_utc.max(), "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+    age = (now - newest).total_seconds() / 3600
+    if age > STALE_HOURS:
+        print(f"  ! najnovije PM10 mjerenje je od {newest:%Y-%m-%d %H:%M} UTC ({age:.0f} h staro)")
+        return True
+    return False
 
 
 def save_fhmz(new: pd.DataFrame) -> None:
@@ -218,6 +223,7 @@ def main() -> int:
     print("FHMZ mjerenja:")
     obs = collect_fhmz(fetched_at)
     save_fhmz(obs)
+    stale = is_stale(obs, now)
 
     print("Open-Meteo prognoze:")
     forecast_ok = True
@@ -228,7 +234,7 @@ def main() -> int:
         forecast_ok = False
 
     # neuspjeh vraća kod 1, pa GitHub Actions pokaže crveno i pošalje ti mail
-    if obs.empty or not forecast_ok:
+    if obs.empty or stale or not forecast_ok:
         print("GREŠKA: dio podataka nije prikupljen")
         return 1
     print("Gotovo.")

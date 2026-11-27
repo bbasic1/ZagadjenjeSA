@@ -221,7 +221,7 @@ def message(pred: pd.DataFrame) -> str:
     source = ("Rezervna prognoza iz mjerenja FHMZ" if fallback
               else "Eksperimentalni model korigovan na mjerenja stanica")
     lines.append(f"<i>{source}, nije zvanični izvor. "
-                 "Kategorije po skali indeksa FHMZ. Mjerenja uživo: fhmzbih.gov.ba</i>")
+                 "Kategorije po skali indeksa FHMZ. Mjerenja uživo: zrak.fhmzbih.gov.ba</i>")
     return "\n".join(lines)
 
 
