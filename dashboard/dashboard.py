@@ -396,7 +396,7 @@ primjenjuje na satne vrijednosti; ovdje se primjenjuje na dnevni prosjek.</li>
 <li>Prognoze se commituju u repo u trenutku slanja (<a href="{REPO}/commits/main/data/predictions">historija
 </a>), pa se ne mogu naknadno popraviti. Svi parovi: <a href="parovi.csv">parovi.csv</a>.</li>
 </ul>
-<p class="muted">Eksperimentalni projekat, nije zvanični izvor. Mjerenja: FHMZ (fhmzbih.gov.ba).
+<p class="muted">Eksperimentalni projekat, nije zvanični izvor. Izvor podataka: Federalni hidrometeorološki zavod (FHMZ), <a href="https://zrak.fhmzbih.gov.ba">zrak.fhmzbih.gov.ba</a>.
 Prognoze vremena i CAMS: Open-Meteo, CC BY 4.0. <a href="{REPO}">Kod</a>.</p>
 </main><script>{JS}</script></body></html>"""
 

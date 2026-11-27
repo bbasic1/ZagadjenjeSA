@@ -1,11 +1,11 @@
 """
-Testovi za FHMZ scraper (collect.parse_station_html).
+Testovi za FHMZ prikupljanje (collect.parse_portal_json).
 
-FHMZ može promijeniti HTML stanica bez najave, a propušteni dani se ne mogu
-vratiti. Zato dvije vrste testova:
-  * offline: parser na malom primjeru u formatu stranice (uvijek se pokreću)
-  * uživo: prava stranica jedne stanice mora dati svježe PM10 vrijednosti
-    (samo uz LIVE=1, jer traži pristup fhmzbih.gov.ba; pokreće ih tests.yml)
+FHMZ može promijeniti portal bez najave (26.11.2026. je ugasio stare stranice
+stanica), a propušteni dani se ne mogu vratiti. Zato dvije vrste testova:
+  * offline: parser na malom primjeru u formatu odgovora portala (uvijek)
+  * uživo: portal mora dati svježe PM10 vrijednosti za većinu stanica
+    (samo uz LIVE=1, jer traži pristup zrak.fhmzbih.gov.ba; pokreće ih tests.yml)
 
 python -m unittest discover tests
 """
@@ -14,83 +14,76 @@ import os
 import unittest
 from datetime import datetime, timedelta, timezone
 
-import requests
+import pandas as pd
 
-from ingest.collect import FHMZ_BASE, HEADERS, STATIONS, parse_station_html
+from ingest.collect import STATIONS, fetch_pollutant, is_stale, parse_portal_json
 
-HOURS = [f"{h}:00" for h in range(24)]
-
-
-def table(header: list[str], rows: list[list[str]], title: str | None = None) -> str:
-    tr = lambda cells: "<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>"
-    head = tr([title]) if title else ""
-    return "<table>" + head + tr(header) + "".join(tr(r) for r in rows) + "</table>"
+IDS = {s[0]: code for code, s in STATIONS.items()}
 
 
-def day_row(date: str, values: dict[int, str]) -> list[str]:
-    return [date] + [values.get(h, "") for h in range(24)]
+def item(station_id: int, date: str, value):
+    # skraćen red iz /rest/pubrep/data/last_week/{polutant}
+    return {"canton": "Kanton Sarajevo", "date": date, "id": station_id,
+            "name": "x", "stationId": "STA-x", "value": value}
 
 
-SAMPLE = "<html><body>" + table(
-    # varijanta 1: ime polutanta u prvoj ćeliji zaglavlja
-    ["PM10"] + HOURS,
-    [day_row("20.10.2026.", {0: "12,5", 1: "#", 13: "30"}),
-     day_row("21.10.2026.", {23: "41,0"})],
-) + table(
-    # varijanta 2: "Datum" u zaglavlju, ime polutanta u redu iznad
-    ["Datum"] + HOURS,
-    [day_row("20.10.2026.", {5: "8,1"})],
-    title="PM2.5",
-) + table(
-    # tabela bez datuma (NOx): datumi se uzimaju iz prethodne tabele
-    ["NO2"] + HOURS,
-    [day_row("", {0: "20"})],
-) + "</body></html>"
+SAMPLE = [
+    item(17, "2026-11-21T23:00:00", 15.9254),   # Vijećnica, zima (UTC+1)
+    item(17, "2026-11-22T00:00:00", 14.7027),   # ponoć lokalno = 23:00 UTC prethodnog dana
+    item(3,  "2026-10-20T00:00:00", 12.5),      # Bjelave, ljetno vrijeme (UTC+2)
+    item(3,  "2026-11-21T10:00:00", None),      # nema mjerenja
+    item(999, "2026-11-21T10:00:00", 50.0),     # stanica koju ne pratimo
+]
 
 
 class ParseSample(unittest.TestCase):
     def setUp(self):
-        self.rows = parse_station_html(SAMPLE)
-        self.by = {(r["pollutant"], r["time_utc"]): r["value"] for r in self.rows}
+        self.rows, self.missing = parse_portal_json(SAMPLE, IDS, "PM10")
+        self.by = {(r["station"], r["time_utc"]): r["value"] for r in self.rows}
 
     def test_values_and_utc(self):
-        # 20.10. 00:00 lokalno (CEST, UTC+2) = 19.10. 22:00 UTC
-        self.assertEqual(self.by[("PM10", "2026-10-19 22:00")], 12.5)
-        self.assertEqual(self.by[("PM10", "2026-10-20 11:00")], 30.0)
-        self.assertEqual(self.by[("PM10", "2026-10-21 21:00")], 41.0)
+        # provjereno naspram starih stranica: lokalno 23:00 = 22:00 UTC zimi
+        self.assertEqual(self.by[("vijecnica", "2026-11-21 22:00")], 15.93)
+        self.assertEqual(self.by[("vijecnica", "2026-11-21 23:00")], 14.7)
+        self.assertEqual(self.by[("bjelave", "2026-10-19 22:00")], 12.5)
 
-    def test_missing_cells_skipped(self):
-        # "#" i prazne ćelije ne smiju postati nula
-        self.assertNotIn(("PM10", "2026-10-19 23:00"), self.by)
-        self.assertEqual(sum(1 for p, _ in self.by if p == "PM10"), 3)
+    def test_missing_values_skipped(self):
+        # null ne smije postati nula, ali se broji
+        self.assertEqual(self.missing, 1)
+        self.assertNotIn(("bjelave", "2026-11-21 09:00"), self.by)
 
-    def test_pollutant_from_row_above(self):
-        self.assertEqual(self.by[("PM2_5", "2026-10-20 03:00")], 8.1)
+    def test_unknown_station_ignored(self):
+        self.assertEqual(len(self.rows), 3)
+        self.assertTrue(all(r["pollutant"] == "PM10" for r in self.rows))
 
-    def test_table_without_dates(self):
-        self.assertEqual(self.by[("NO2", "2026-10-19 22:00")], 20.0)
+    def test_empty_response(self):
+        self.assertEqual(parse_portal_json([], IDS, "PM10"), ([], 0))
 
-    def test_empty_page(self):
-        self.assertEqual(parse_station_html("<html><p>Stranica u izradi</p></html>"), [])
+
+class Stale(unittest.TestCase):
+    def test_stale(self):
+        now = datetime(2026, 11, 27, 21, 0, tzinfo=timezone.utc)
+        fresh = pd.DataFrame([{"pollutant": "PM10", "time_utc": "2026-11-27 19:00"}])
+        old = pd.DataFrame([{"pollutant": "PM10", "time_utc": "2026-11-22 14:00"}])
+        self.assertFalse(is_stale(fresh, now))
+        self.assertTrue(is_stale(old, now))
+        self.assertTrue(is_stale(pd.DataFrame(), now))
 
 
 @unittest.skipUnless(os.environ.get("LIVE") == "1", "uživo test samo uz LIVE=1")
-class LivePage(unittest.TestCase):
-    """Ako ovo padne, FHMZ je vjerovatno promijenio stranicu: popravi parser odmah."""
+class LivePortal(unittest.TestCase):
+    """Ako ovo padne, FHMZ je vjerovatno promijenio portal: popravi prikupljanje odmah."""
 
-    def test_station_page_format(self):
+    def test_pm10_fresh(self):
+        rows, _ = parse_portal_json(fetch_pollutant(287), IDS, "PM10")
         failures = []
-        for code, (page, _, _) in STATIONS.items():
-            r = requests.get(FHMZ_BASE + page, headers=HEADERS, timeout=30)
-            r.raise_for_status()
-            r.encoding = "utf-8"
-            rows = parse_station_html(r.text)
-            pm10 = [x for x in rows if x["pollutant"] == "PM10"]
-            if not pm10:
+        for code in STATIONS:
+            times = [r["time_utc"] for r in rows if r["station"] == code]
+            if not times:
                 failures.append(f"{code}: nema PM10")
                 continue
-            last = max(datetime.strptime(x["time_utc"], "%Y-%m-%d %H:%M") for x in pm10)
-            if datetime.now(timezone.utc).replace(tzinfo=None) - last > timedelta(days=3):
+            last = datetime.strptime(max(times), "%Y-%m-%d %H:%M")
+            if datetime.now(timezone.utc).replace(tzinfo=None) - last > timedelta(days=1):
                 failures.append(f"{code}: zadnji PM10 {last} UTC")
         # pojedinačna stanica može ne raditi; ako ne radi većina, problem je u formatu
         self.assertLess(len(failures), len(STATIONS) // 2, "; ".join(failures))

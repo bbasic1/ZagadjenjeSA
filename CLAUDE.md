@@ -71,7 +71,7 @@ Pokretanje lokalno: `pip install -r requirements.txt && python -m ingest.collect
 ## Činjenice o podacima
 
 - Sva vremena u fajlovima su **UTC**. FHMZ prikazuje lokalno vrijeme (Europe/Sarajevo), `collect.py` ga pretvara.
-- `collect.py` čita stranice pojedinih stanica (`amsXxx.php`), koje daju zadnjih ~7 dana, pa se propušten run sam popuni. Glavna AQI stranica se **ne koristi** jer gubi prazne ćelije.
+- `collect.py` čita FHMZ portal `zrak.fhmzbih.gov.ba` (JSON iza izvještaja "Sedmodnevni pregled", `/rest/pubrep/data/last_week/{id polutanta}?stations=...`), jedan zahtjev po polutantu za sve stanice, zadnjih ~7 dana, pa se propušten run sam popuni. `date` u odgovoru je lokalno vrijeme. Stare stranice `amsXxx.php` su prestale da se osvježavaju 22.11.2026. u 14 UTC i vraćaju 404 od 26.11. Uslovi portala: izvor FHMZ uz podatke, najviše 1 zahtjev u 0,5 s. Run pada i kad je najnovije PM10 starije od 12 h.
 - Stanice: vijecnica, bjelave, otoka, saraj_polje, ilidza, vogosca, hadzici, ilijas, ivan_sedlo. Ivan Sedlo je planinska stanica iznad kotline.
 - U CAMS-u su Bjelave i Vijećnica ista ćelija, kao i Ilidža i Saraj Polje; model ih tretira kao jednu lokaciju dok kalibracija na stanicama ne napravi razliku.
 - CAMS u oktobru 2026 precjenjuje stanice za ~9 µg/m³ PM10.
